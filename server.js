@@ -97,5 +97,3 @@ app.use((req, res) => {
 });
 
 app.listen(port, () => console.log(`Jarvis app is listening on port ${port}`));
-
-export default app;

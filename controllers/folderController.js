@@ -26,7 +26,7 @@ export const createFolder = async (req, res, next) => {
 
         // check user plan how much folders a user can have
         // -1 is for unlimited
-         // check user plan
+        // check user plan
         if (userLimit === 0) {
             throw new CustomError(`Folder Creation are not allowed in ${req.user.plan.planName} plan`, 403);
         }
@@ -55,26 +55,24 @@ export const getFolders = async (req, res, next) => {
     const { search } = req.query;
 
     try {
-
         let query = {};
-        // if (req.user.role === "customer") {
-        //     query.owner = req.user._id
-        // }
-        // if (req.user.role === "teammember") {
-        //     query.owner = req.user.customerRef.toString()
-        // }
-        query.owner = req.team._id
+        query.owner = req.team._id;
+
         if (search && search !== "undefined") {
-            // we have to search in the folder name but we want to be case insensitive
-            query.name = new RegExp(search, 'i');
+            query.name = new RegExp(search, 'i'); // Case-insensitive search
         }
-        // we need the selected one as first item so we sort it accordingly
-        const folders = await Folder.find(query).sort({ selected: -1 })
-        const foldersWithLeadsInfo = await Promise.all(folders.map(async f => {
-            const leads = await Promise.all(f.leads.map(async l => {
-                const lead = await Lead.findById(l).select('linkedInId');
-                return lead
-            }))
+
+        const folders = await Folder.find(query).sort({ selected: -1 });
+
+        // Collect all lead IDs in one go
+        const leadIds = folders.flatMap(folder => folder.leads);
+        const leadsMap = new Map(
+            (await Lead.find({ _id: { $in: leadIds } }).select('linkedInId')).map(lead => [lead._id.toString(), lead])
+        );
+
+        // Map leads to folders
+        const foldersWithLeadsInfo = folders.map(f => {
+            const leads = f.leads.map(leadId => leadsMap.get(leadId.toString()));
 
             return {
                 _id: f._id,
@@ -86,15 +84,16 @@ export const getFolders = async (req, res, next) => {
                 leads: leads,
                 created_at: f.created_at,
                 updated_at: f.updated_at,
-                leads: leads,
                 default: f.default
-            }
-        }))
+            };
+        });
+
         res.json({ success: true, result: foldersWithLeadsInfo });
     } catch (error) {
         next(error);
     }
 };
+
 
 export const getFolderById = async (req, res, next) => {
     try {

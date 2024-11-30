@@ -6,6 +6,7 @@ import CustomError from '../../utils/CustomError.js';
 // Create a new LeadStatus
 const createLeadStatus = async (req, res, next) => {
     const owner = req.user;
+
     try {
         const { name, color, status } = req.body;
         if (!name || !color) {

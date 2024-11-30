@@ -1,14 +1,11 @@
 import EmailValidator from "email-deep-validator";
 import Company from "../models/companyModel.js";
 import Lead from "../models/leadModel.js";
-import Team from "../models/teamModel.js";
 import User from "../models/userModel.js";
 import { getCompanyInfoService, getEmailsService, getPhoneNumbersService } from "../services/googleSearchService.js";
 import CustomError from "../utils/CustomError.js";
 import { checkCompanyNameInString, extractCompanyName, generateEmailFromSequenceAndVerify, generateEmailsFromPattrens, sixStepsEmailVerification } from "../utils/functions.js";
 import dns from "dns"
-
-
 
 const getCompaniesInfo = async (req, res, next) => {
 
@@ -42,17 +39,52 @@ const getCompaniesInfo = async (req, res, next) => {
 		if (linkedinUserId) {
 			const adminCustomerEmail = process.env.ADMIN_CUSTOMER_ACCOUNT_EMAIL || "admincustomer@gmail.com"
 			// we have to check if the admin customer has already this lead and it contain emails
-			const adminCustomer = await User.findOne({ email: adminCustomerEmail });
-			if (adminCustomer) {
-				const adminCustomerTeam = await Team.findOne({ creator: adminCustomer._id });
-				if (adminCustomerTeam) {
-					const adminCreatedLead = await Lead.findOne({ linkedInId: linkedinUserId, owner: adminCustomerTeam._id });
-					if (adminCreatedLead) {
-						existingEmails = adminCreatedLead.emails;
-						existingPhones = adminCreatedLead.phones;
-					}
-				}
+			const adminCustomerData = await User.aggregate([
+				{ $match: { email: adminCustomerEmail } },
+				{
+					$lookup: {
+						from: "teams",
+						localField: "_id",
+						foreignField: "creator",
+						as: "adminCustomerTeam",
+					},
+				},
+				{ $unwind: "$adminCustomerTeam" },
+				{
+					$lookup: {
+						from: "leads",
+						let: { teamId: "$adminCustomerTeam._id" },
+						pipeline: [
+							{ $match: { $expr: { $and: [{ $eq: ["$linkedInId", linkedinUserId] }, { $eq: ["$owner", "$$teamId"] }] } } },
+						],
+						as: "adminCreatedLead",
+					},
+				},
+				{ $unwind: { path: "$adminCreatedLead", preserveNullAndEmptyArrays: true } },
+				{
+					$project: {
+						existingEmails: "$adminCreatedLead.emails",
+						existingPhones: "$adminCreatedLead.phones",
+					},
+				},
+			]);
+
+			if (adminCustomerData.length) {
+				existingEmails = adminCustomerData[0].existingEmails || [];
+				existingPhones = adminCustomerData[0].existingPhones || [];
 			}
+
+			// const adminCustomer = await User.findOne({ email: adminCustomerEmail });
+			// if (adminCustomer) {
+			// 	const adminCustomerTeam = await Team.findOne({ creator: adminCustomer._id });
+			// 	if (adminCustomerTeam) {
+			// 		const adminCreatedLead = await Lead.findOne({ linkedInId: linkedinUserId, owner: adminCustomerTeam._id });
+			// 		if (adminCreatedLead) {
+			// 			existingEmails = adminCreatedLead.emails;
+			// 			existingPhones = adminCreatedLead.phones;
+			// 		}
+			// 	}
+			// }
 
 			//if not then we have to check if this leads exists anywhere (not the admin customer one )and has emails
 			if (existingEmails.length === 0) {
@@ -76,7 +108,7 @@ const getCompaniesInfo = async (req, res, next) => {
 
 			//if not then we have to check if this leads exists anywhere (not the admin customer one )and has phones
 			if (existingPhones.length === 0) {
-				// we need that lead from our databse where email is more then all other same leads
+				// we need that lead from our databse where phones is more then all other same leads
 				const existingLead = (await Lead.aggregate([
 					{ $match: { linkedInId: linkedinUserId } }, // Filter by LinkedIn ID
 					{
@@ -112,7 +144,7 @@ const getCompaniesInfo = async (req, res, next) => {
 			existingEmails = validatedExistingEmails.filter(email => email !== undefined);
 		}
 
-		const company = await Company.findOne({ linkedinUrl: companyLinkedinUrl });
+		const company = await Company.findOne({ linkedinUrl: companyLinkedinUrl }).lean();
 
 		if (company) {
 			let finalizedEmails = []
@@ -280,48 +312,52 @@ const getCompaniesInfo = async (req, res, next) => {
 					// if this lead is added already
 					finalizedEmails = existingEmails
 				} else {
-					const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
-					for (const attempt of queryAttempts) {
-						emails = await getEmailsService(companyName.toLowerCase(), personName, attempt);
-						// check is there is no issue with google search api (credists end or other restriction)
-						isGoogleSearchApiOk = emails.result.emailSearchResponseItems ? true : false;
-						if (emails.result?.modifiedEmails && emails.result?.modifiedEmails.length > 0) {
-							break; // Exit the loop if emails are found
+					// first we have to generate and verify email from pattrens else we have to search google
+					const companyUrl = catagorizedLinks.filter(link => link.type === "official")[0]?.link;
+					let emailFromPattren = null;
+					if (companyUrl) {
+						const companyTLDArray = new URL(companyUrl).host.split(".");
+						const companyDomain = companyTLDArray[companyTLDArray.length - 2] + "." + companyTLDArray[companyTLDArray.length - 1];
+						// here we will generate emails from sequences and verify them
+						// get the domain from companyUrl
+						const generated = await generateEmailFromSequenceAndVerify(personName, companyDomain);
+						if (generated.success) {
+							console.log("from google pattren", generated.email);
+							emailFromPattren = generated.email;	
 						}
 					}
-
-					const modifiedEmails = emails.result?.modifiedEmails || [];
-
-					// emails verification of emails generated from pattren 
-					const verifiedEmailsFromPattern = await Promise.all(modifiedEmails.map(async emailObj => {
-						const verified = await sixStepsEmailVerification(emailObj.email)
-						if (verified.success) {
-							return {
-								...emailObj,
-								validationStatus: 1,
-								valid: true,
-								type: "Work"
-							}
-						}
-						return undefined;
-					}));
-					const filteredVerifiedEmails = verifiedEmailsFromPattern.filter(emailObj => emailObj !== undefined);
-
-					if (filteredVerifiedEmails.length > 0) {
-						finalizedEmails = filteredVerifiedEmails;
+					if (emailFromPattren) {
+						finalizedEmails.push(emailFromPattren)
 					} else {
-						const companyUrl = catagorizedLinks.filter(link => link.type === "official")[0]?.link;
-						if (companyUrl) {
-							const companyTLDArray = new URL(companyUrl).host.split(".");
-							const companyDomain = companyTLDArray[companyTLDArray.length - 2] + "." + companyTLDArray[companyTLDArray.length - 1];
-							// here we will generate emails from sequences and verify them
-							// get the domain from companyUrl
-							const generated = await generateEmailFromSequenceAndVerify(personName, companyDomain);
-							if (generated.success) {
-								finalizedEmails.push(generated.email)
+						console.log("from google search");
+						// now we have to search google for email pattrens
+						const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
+						for (const attempt of queryAttempts) {
+							emails = await getEmailsService(companyName.toLowerCase(), personName, attempt);
+							// check is there is no issue with google search api (credists end or other restriction)
+							isGoogleSearchApiOk = emails.result.emailSearchResponseItems ? true : false;
+							if (emails.result?.modifiedEmails && emails.result?.modifiedEmails.length > 0) {
+								break; // Exit the loop if emails are found
 							}
 						}
-						// is there are no verifiedemails from the generated patterns then we will work on sequences
+
+						const modifiedEmails = emails.result?.modifiedEmails || [];
+
+						// emails verification of emails generated from pattren 
+						const verifiedEmailsFromPattern = await Promise.all(modifiedEmails.map(async emailObj => {
+							const verified = await sixStepsEmailVerification(emailObj.email)
+							if (verified.success) {
+								return {
+									...emailObj,
+									validationStatus: 1,
+									valid: true,
+									type: "Work"
+								}
+							}
+							return undefined;
+						}));
+						const filteredVerifiedEmails = verifiedEmailsFromPattern.filter(emailObj => emailObj !== undefined);
+						finalizedEmails = filteredVerifiedEmails;
 					}
 				}
 
@@ -359,15 +395,15 @@ const getCompaniesInfo = async (req, res, next) => {
 				}
 
 				if (isGoogleSearchApiOk) {//store this company info in database so net time for this company we dont run the searches
-					await Company.create({
-						emailPattrens: emails.result?.uniqueResults || [],
-						phones: existingPhones,
-						links: catagorizedLinks,
-						linkedinUrl: companyLinkedinUrl,
-						location: companyDetails.location,
-						companySize: companyDetails.companySize,
-						founded: companyDetails.founded,
-					})
+					// await Company.create({
+					// 	emailPattrens: emails.result?.uniqueResults || [],
+					// 	phones: existingPhones,
+					// 	links: catagorizedLinks,
+					// 	linkedinUrl: companyLinkedinUrl,
+					// 	location: companyDetails.location,
+					// 	companySize: companyDetails.companySize,
+					// 	founded: companyDetails.founded,
+					// })
 				}
 
 				res.status(200).json({ success: true, result: companyData })
@@ -469,23 +505,13 @@ const testdata = async (req, res, next) => {
 	const { companyName, companyPage, personName, num = 10, start = 1 } = req.body;
 
 	try {
-		let targetStringsRaw = []
-		const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
-		for (const attempt of queryAttempts) {
-			console.log("attempt no >" + attempt)
-			const emails = await getEmailsService(companyName.toLowerCase(), personName, attempt);
-			targetStringsRaw.push(emails)
-			if (emails.result?.modifiedEmails && emails.result?.modifiedEmails.length > 0) {
-				break; // Exit the loop if emails are found
-			}
-		}
-		res.status(200).json({ success: true, data: targetStringsRaw });
+		const verified = await sixStepsEmailVerification(companyName);
+		res.status(200).json({ success: true, data: verified });
 
 	} catch (error) {
 		next(error);
 	}
 };
-
 
 const extractPattrens = async (req, res, next) => {
 	const { companyName, personName, num = 10, start = 1, } = req.body;

@@ -14,12 +14,12 @@ const protect = async (req, res, next) => {
     if (token) {
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            const user = await User.findById(decoded.userId).select('-password');
+            const user = await User.findById(decoded.userId).select('-password').lean();
             if (!user) {
                 console.log(token, process.env.JWT_SECRET, decoded)
                 throw new CustomError('user deleted', 404);
             }
-            const team = await Team.findOne({ accounts: { $in: [user._id] } })
+            const team = await Team.findOne({ accounts: { $in: [user._id] } }).lean()
 
             if (user.role !== "admin" && !team) {
                 throw new Error('Not authorized, user is not a team member or team admin');
@@ -47,21 +47,6 @@ const protect = async (req, res, next) => {
     }
 };
 
-const admin = (req, res, next) => {
-    if (req.user && req.user.role === 'admin') {
-        next();
-    } else {
-        res.status(401).json({
-            success: false,
-            status: false,
-            message: error.message,
-            stack: process.env.NODE_ENV === 'production' ? {} : err.stack
-        })
-        throw new Error('Not authorized as an admin');
-    }
-};
-
 export {
     protect,
-    admin
 };
