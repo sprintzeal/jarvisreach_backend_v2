@@ -57,8 +57,6 @@ function sanitizeEmail(email) {
     return sanitizedEmail;
 }
 
-
-
 export const sixStepsEmailVerification = async (email) => {
 
     try {
@@ -103,7 +101,6 @@ export const sixStepsEmailVerification = async (email) => {
 }
 
 export async function generateEmailFromSequenceAndVerify(personName, domain) {
-
     const firstName = personName.split(" ")[0]?.toLowerCase();
     const lastName = personName.split(" ")[1]?.toLowerCase();
 
@@ -127,43 +124,53 @@ export async function generateEmailFromSequenceAndVerify(personName, domain) {
         "(firstname).(l)",
         "(l)(firstname)"
     ];
-    
-    const generatedEmails = patterns.map(pattern => {
-        const emailPattern = pattern
-            .replace("(firstname)", firstName.toLowerCase())
-            .replace("(lastname)", lastName.toLowerCase())
+
+    const generatedEmails = patterns.map(pattern =>
+        pattern
+            .replace("(firstname)", firstName)
+            .replace("(lastname)", lastName)
             .replace("(f)", firstInitial)
-            .replace("(l)", lastInitial);
+            .replace("(l)", lastInitial) + `@${domain}`
+    );
 
-        return `${emailPattern}@${domain}`;
-    });
+    // Batch size for parallel execution
+    const batchSize = 5;
 
-    // now verify the emails and once an email is verified we will stop and return it
-    let finalizedEmail = null;
-
-    for (const email of generatedEmails) {
-        const verified = await sixStepsEmailVerification(email);
-        if (verified.success && finalizedEmail === null) {
-            finalizedEmail = email;
-            break;
-        }
-    }
-    if (finalizedEmail) {
-        return {
-            success: true,
-            email: {
-                email: finalizedEmail,
-                validationStatus: 1,
-                valid: true,
-                type: "Work"
+    // Helper function to verify emails in a batch
+    async function verifyBatch(emails) {
+        const verificationResults = await Promise.all(
+            emails.map(email => sixStepsEmailVerification(email))
+        );
+        // Find the first successful verification in the batch
+        for (let i = 0; i < verificationResults.length; i++) {
+            if (verificationResults[i].success) {
+                return emails[i]; // Return the verified email
             }
         }
-    } else {
-        return {
-            success: false,
+        return null;
+    }
+
+    // Process emails in batches
+    for (let i = 0; i < generatedEmails.length; i += batchSize) {
+        const batch = generatedEmails.slice(i, i + batchSize);
+        const verifiedEmail = await verifyBatch(batch);
+        if (verifiedEmail) {
+            return {
+                success: true,
+                email: {
+                    email: verifiedEmail,
+                    validationStatus: 1,
+                    valid: true,
+                    type: "Work"
+                }
+            };
         }
     }
+
+    // If no email is verified
+    return { success: false };
 }
+
 
 
 
@@ -204,7 +211,7 @@ export function calculateDaysBetween(startDateStr, endDateStr) {
  * @returns {string} - The extracted company name, or a message indicating that the company name was not found.
  */
 export async function extractCompanyName(leads) {
-
+console.log("using GPT")
     const headLines = [];
     let companyNames = [];
 
@@ -221,20 +228,21 @@ export async function extractCompanyName(leads) {
         return leads
     }
     let allNames = [];
-    if(resarry.length === 1) {
+    if (resarry.length === 1) {
         allNames = resarry
-    } 
+    }
     else {
         allNames = resarry.map((val, index) => val.split(`${index + 1}. `)[1]);
     }
     companyNames = allNames;
-    console.log(allNames)
+
     const leadsWithComapnyNames = leads.map((lead, index) => {
         return {
             ...lead,
             companyName: companyNames[index]
         }
     });
+
     const finalresult = leadsWithComapnyNames.map((lead, index) => {
         const { companyName, ...rest } = lead;
 

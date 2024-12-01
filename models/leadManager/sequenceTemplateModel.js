@@ -4,7 +4,7 @@ const { Schema } = mongoose;
 
 // Define the schema for an email template
 const sequenceTemplateSchema = new Schema({
-    owner:{
+    owner: {
         type: Schema.Types.ObjectId,
         ref: 'User',
         required: true  // Owner of the sequence template
@@ -13,15 +13,15 @@ const sequenceTemplateSchema = new Schema({
         type: String,
         required: true,
     },
-    subject:{
+    subject: {
         type: String,
         required: true  // Subject of the email
     },
-    enabled:{
+    enabled: {
         type: Boolean,
         default: true  // Is this sequence template enabled or disabled?
     },
-    noOfFollowUps:{
+    noOfFollowUps: {
         type: Number,
         required: true // Number of follow-ups in this sequence template
     },
@@ -37,14 +37,14 @@ const sequenceTemplateSchema = new Schema({
         }
     ]
 },
-{
-    timestamps: {
-        createdAt: 'created_at',
-        updatedAt: 'updated_at'
+    {
+        timestamps: {
+            createdAt: 'created_at',
+            updatedAt: 'updated_at'
+        }
     }
-}
 );
-
+sequenceTemplateSchema.index({ owner: 1 });
 // Create and export the model
 const SequenceTemplate = mongoose.model('SequenceTemplate', sequenceTemplateSchema);
 

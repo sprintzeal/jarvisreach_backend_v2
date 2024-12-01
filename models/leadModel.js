@@ -217,6 +217,10 @@ const LeadSchema = new mongoose.Schema({
     }
 );
 
+// Add indexes
+LeadSchema.index({ linkedInId: 1 });
+LeadSchema.index({ folderId: 1 });
+
 const Lead = mongoose.model('Lead', LeadSchema);
 
 export default Lead;

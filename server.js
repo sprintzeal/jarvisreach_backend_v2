@@ -1,9 +1,10 @@
+import cluster from 'cluster';
+import os from 'os';
 import dotenv from 'dotenv';
 dotenv.config();
 import express from 'express';
 import connectDB from './db.js';
 import cors from 'cors';
-import session from "express-session"
 import errorHandler from './middleware/errorHandler.js';
 import cookieParser from 'cookie-parser';
 import path from "path"
@@ -28,72 +29,91 @@ import stripeWebhook from './webhooks/stripeWebhook.js';
 import "./backgroundWorkers/scheduleTasks/emailSequenceSender.js"
 import "./backgroundWorkers/scheduleTasks/usersCreditsUpdater.js"
 
-const app = express();
+// we have to use max CPU cors for load balancing 
+if (cluster.isPrimary) {
+    // Get the number of CPU cores
+    const numCPUs = os.cpus().length;
+    console.log(`Primary ${process.pid} is running. Forking ${numCPUs} workers...`);
 
-app.use(session({
-    secret: process.env.SESSION_SECRET || "hsalfsdgisalfstu",
-    resave: false,
-    saveUninitialized: false
-}));
-
-
-const port = process.env.PORT || 5000;
-// connection to database server
-connectDB();
-
-// cors middleware
-app.use(cors({
-    credentials: true,
-    origin: true
-}));
-
-
-app.use((req, res, next) => {
-    if (req.originalUrl === "/api/stripe-webhook") {
-        next(); // Do nothing with the body because I need it in a raw state.
-    } else {
-        express.json()(req, res, next); // ONLY do express.json() if the received request is NOT a WebHook from Stripe.
+    // Fork workers
+    for (let i = 0; i < numCPUs; i++) {
+        cluster.fork();
     }
-});
 
-app.use(express.urlencoded({ extended: true }));
+    // Restart workers if they exit
+    cluster.on('exit', (worker, code, signal) => {
+        console.log(`Worker ${worker.process.pid} died. Starting a new one...`);
+        cluster.fork();
+    });
+} else {
+    const app = express();
 
-// parse the cookies
-app.use(cookieParser());
+    // app.use(session({
+    //     secret: process.env.SESSION_SECRET || "hsalfsdgisalfstu",
+    //     resave: false,
+    //     saveUninitialized: false
+    // }));
 
-app.get('/', (req, res) => res.send('Jarvisreach API is Running. 🚀'));
-app.get('/api', (req, res) => res.send('Jarvisreach API Base URL. 📡'));
 
-//stripe web hook
-app.use('/api/stripe-webhook', stripeWebhook);
+    const port = process.env.PORT || 5000;
+    // connection to database server
+    connectDB();
 
-const dirname = path.resolve();
+    // cors middleware
+    app.use(cors({
+        credentials: true,
+        origin: true
+    }));
 
-app.use('/assets', express.static(path.join(dirname, 'assets')));
 
-//routes middlewares for deploying 
+    app.use((req, res, next) => {
+        if (req.originalUrl === "/api/stripe-webhook") {
+            next(); // Do nothing with the body because I need it in a raw state.
+        } else {
+            express.json()(req, res, next); // ONLY do express.json() if the received request is NOT a WebHook from Stripe.
+        }
+    });
 
-app.use('/api/users', usersRoutes);
-app.use('/api/profiles', LeadsRoutes);
-app.use('/api/folders', folderRoutes);
-app.use('/api/views', viewRoutes);
-app.use('/api/team', teamMemberRoutes);
-app.use('/api/lin', linkedinRoutes);
-app.use('/api/exports', leadExportsRoutes);
-app.use('/api/plans', plansRoutes);
-app.use('/api/leadmanager', leadManagerRoutes);
-app.use('/api/blog', blogRoutes);
-app.use('/api/help', helpSupportRoutes);
-app.use('/api/uploads', uploadRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/config', configRoutes);
+    app.use(express.urlencoded({ extended: true }));
 
-//error handler middleware
-app.use(errorHandler)
+    // parse the cookies
+    app.use(cookieParser());
 
-// catch all
-app.use((req, res) => {
-    res.status(404).send('404 Not Found. 🚫');
-});
+    app.get('/', (req, res) => res.send('Jarvisreach API is Running. 🚀'));
+    app.get('/api', (req, res) => res.send('Jarvisreach API Base URL. 📡'));
 
-app.listen(port, () => console.log(`Jarvis app is listening on port ${port}`));
+    //stripe web hook
+    app.use('/api/stripe-webhook', stripeWebhook);
+
+    const dirname = path.resolve();
+
+    app.use('/assets', express.static(path.join(dirname, 'assets')));
+
+    //routes middlewares for deploying 
+
+    app.use('/api/users', usersRoutes);
+    app.use('/api/profiles', LeadsRoutes);
+    app.use('/api/folders', folderRoutes);
+    app.use('/api/views', viewRoutes);
+    app.use('/api/team', teamMemberRoutes);
+    app.use('/api/lin', linkedinRoutes);
+    app.use('/api/exports', leadExportsRoutes);
+    app.use('/api/plans', plansRoutes);
+    app.use('/api/leadmanager', leadManagerRoutes);
+    app.use('/api/blog', blogRoutes);
+    app.use('/api/help', helpSupportRoutes);
+    app.use('/api/uploads', uploadRoutes);
+    app.use('/api/analytics', analyticsRoutes);
+    app.use('/api/config', configRoutes);
+
+    //error handler middleware
+    app.use(errorHandler)
+
+    // catch all
+    app.use((req, res) => {
+        res.status(404).send('404 Not Found. 🚫');
+    });
+
+    app.listen(port, () => console.log(`Jarvis app is listening on port ${port}`));
+}
+

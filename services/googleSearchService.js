@@ -118,7 +118,7 @@ export async function getEmailsService(companyName, personName, useQueryNumber =
         if (useQueryNumber === 4) {
             searchEmailUrl = `https://www.googleapis.com/customsearch/v1?q=${companyNameEncoded}%20@email%20pattern%20at%20rocketreach&start=${start}&num=${num}&key=${process.env.GOOGLE_SEARCH_API_KEY}&cx=${process.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID}`
         }
-        console.log(searchEmailUrl)
+
         const response = await fetch(searchEmailUrl);
         const emailSearchResponse = await response.json();
         const emailSearchResponseItems = emailSearchResponse.items;
@@ -201,7 +201,7 @@ export async function getEmailsService(companyName, personName, useQueryNumber =
             return {
                 ...e,
                 validationStatus: percentNumber > 95 ? 1 : percentNumber > 85 ? 2 : 3,
-                valid: percentNumber > 75 ? true : false,
+                valid: percentNumber > 65 ? true : false,
                 type: "Work"
             }
         })

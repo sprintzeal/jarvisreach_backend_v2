@@ -11,7 +11,7 @@ const getCompaniesInfo = async (req, res, next) => {
 
 	const { companyName, personName, directEmail, linkedinUserId, companyPage, num = 10, start = 1, } = req.body;
 	// remove the last "/"
-	const companyLinkedinUrl = companyPage.replace(/\/$/, '')
+	const companyLinkedinUrl = companyPage?.replace(/\/$/, '');
 
 	const query = `${companyName} official site OR website OR Facebook OR Twitter OR Instagram OR YouTube`;
 	var url = `https://www.googleapis.com/customsearch/v1?q=${query}&start=${start}&num=${num}&key=${process.env.GOOGLE_SEARCH_API_KEY}&cx=${process.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID}`;
@@ -255,6 +255,7 @@ const getCompaniesInfo = async (req, res, next) => {
 					instagram: /instagram\.com/,
 					// linkedin: /linkedin\.com/
 				};
+
 				let catagorizedLinks = [];
 
 				companyUrls.forEach(url => {
@@ -307,7 +308,6 @@ const getCompaniesInfo = async (req, res, next) => {
 
 				let emails = [];
 				let finalizedEmails = []
-				let isGoogleSearchApiOk = null;
 				if (existingEmails.length > 0) {
 					// if this lead is added already
 					finalizedEmails = existingEmails
@@ -322,20 +322,17 @@ const getCompaniesInfo = async (req, res, next) => {
 						// get the domain from companyUrl
 						const generated = await generateEmailFromSequenceAndVerify(personName, companyDomain);
 						if (generated.success) {
-							console.log("from google pattren", generated.email);
 							emailFromPattren = generated.email;	
 						}
 					}
 					if (emailFromPattren) {
 						finalizedEmails.push(emailFromPattren)
 					} else {
-						console.log("from google search");
 						// now we have to search google for email pattrens
 						const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
 						for (const attempt of queryAttempts) {
 							emails = await getEmailsService(companyName.toLowerCase(), personName, attempt);
 							// check is there is no issue with google search api (credists end or other restriction)
-							isGoogleSearchApiOk = emails.result.emailSearchResponseItems ? true : false;
 							if (emails.result?.modifiedEmails && emails.result?.modifiedEmails.length > 0) {
 								break; // Exit the loop if emails are found
 							}
@@ -394,16 +391,17 @@ const getCompaniesInfo = async (req, res, next) => {
 					...companyDetails,
 				}
 
-				if (isGoogleSearchApiOk) {//store this company info in database so net time for this company we dont run the searches
-					// await Company.create({
-					// 	emailPattrens: emails.result?.uniqueResults || [],
-					// 	phones: existingPhones,
-					// 	links: catagorizedLinks,
-					// 	linkedinUrl: companyLinkedinUrl,
-					// 	location: companyDetails.location,
-					// 	companySize: companyDetails.companySize,
-					// 	founded: companyDetails.founded,
-					// })
+				const emailsPattrens = emails.result?.uniqueResults || [];
+				if (emailsPattrens.length > 0) {//store this company info in database so net time for this company we dont run the searches
+					await Company.create({
+						emailPattrens: emailsPattrens,
+						phones: existingPhones,
+						links: catagorizedLinks,
+						linkedinUrl: companyLinkedinUrl,
+						location: companyDetails.location,
+						companySize: companyDetails.companySize,
+						founded: companyDetails.founded,
+					})
 				}
 
 				res.status(200).json({ success: true, result: companyData })
