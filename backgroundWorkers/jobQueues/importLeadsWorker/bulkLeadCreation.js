@@ -6,6 +6,9 @@ import connectDB from '../../../db.js';
 import Team from '../../../models/teamModel.js';
 import { isValidURL } from '../../../utils/functions.js';
 
+
+
+
 try {
 
     // connect to db as this script is stand alone
@@ -84,8 +87,6 @@ try {
                 const otherPhoneColumnData = String(rawLead["Work_Number"])?.split(",") || [];
                 workPhones = [...workPhones, ...otherPhoneColumnData]
             }
-
-            console.log(workPhones)
 
             // avoid duplicatiosn of phone numbers
             const filteredWorkPhones = Array.from(new Set(workPhones.map(workEmail => workEmail.trim())))
@@ -200,7 +201,8 @@ try {
                     email: emailObj.email?.replace(/\s/g, '')
                 }
             })
-
+            const originalFilename = workerData.originalFilenames[0]
+            
             const formated = {
                 profile: {
                     name: rawLead['Full_Name'] || rawLead['Profile'],
@@ -209,6 +211,7 @@ try {
                 isImportedByAdmin: true,
                 owner: adminCustomerTeam._id,
                 folderId: folder._id,
+                filename: originalFilename,
                 assignedTo: [],
                 linkedInId: linkedInId,
                 profileUrl: `https://www.linkedin.com/in/${linkedInId}`,
@@ -346,16 +349,45 @@ try {
                 folder.leads.push(lead._id);
                 totalLeadsAdded++;
                 leadsLinkedInIds.push(formated.linkedInId)
+
             }
         } catch (error) {
             failedLeads.push({
                 name:rawLead["Full_Name"],
                 linkedInId,
+                profileUrl: `https://www.linkedin.com/in/${linkedInId}`,
+                firstName : rawLead["First_Name"],
+                lastName : rawLead["Last_Name"],
+                location: rawLead["Location_Name"],
+                about: rawLead["About"],
+                loationName: rawLead["Location_Name"],
+                loationPostalCode: rawLead["Location_Postal_Code"],
+                locationLocality: rawLead["Location_Locality"],
+                locationMetro: rawLead["Location_Metro"],
+                locationRegion: rawLead["Location_Region"],
+                locationCountry: rawLead["Location_Country"],
+                company: {
+                    position: rawLead["Job_Title"],
+                    company: rawLead["Job_Company_Name"],
+                    imageSrc: isValidURL(rawLead["Company Logo Url"]) ? rawLead["Company Logo Url"] : undefined,
+                    companySize: rawLead["Job_Company_Size"],
+                    companyInstagramUrl: rawLead["Company Instagram Url"],
+                    companyLocation: rawLead["Job_Company_Location_Name"],
+                    location: rawLead["Location_Name"],
+                    currentPositions: [
+                        {
+                            position: rawLead["Job_Title"],
+                            duration: rawLead["Inferred_Years_Experience"],
+                            company: rawLead["Job_Company_Name"],
+                            imageSrc: isValidURL(rawLead["Company Logo Url"]) ? rawLead["Company Logo Url"] : undefined,
+                        }
+                    ],
+                },
             })
         }
     }));
 
-    const firstFifty = failedLeads.slice(0, 50).length
+    const firstFifty = failedLeads
 
     const ulContent = `
                 <ul>

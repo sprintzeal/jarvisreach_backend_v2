@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 const LeadSchema = new mongoose.Schema({
+    filename: { type: String, required: true },
     profile: {
         name: {
             type: String,
