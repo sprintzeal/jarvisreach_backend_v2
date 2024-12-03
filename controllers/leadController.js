@@ -2,17 +2,21 @@ import Column from '../models/columnModel.js';
 import Folder from '../models/folderModel.js';
 import Sequence from '../models/leadManager/sequenceModel.js';
 import Lead from '../models/leadModel.js';
+import addedSummary from '../models/leadStatus.js';
 import Tag from '../models/tagModel.js';
 import User from '../models/userModel.js';
 import View from '../models/viewModel.js';
 import mongoose from 'mongoose';
-import { freeCreditsUsedEmail } from '../services/sendHtmlTemplates.js';
+import { freeCreditsUsedEmail, leadsExportedEmail } from '../services/sendHtmlTemplates.js';
 import Plan from '../models/plans/planModel.js';
 import { extractCompanyName, generateEmailFromSequenceAndVerify, sixStepsEmailVerification } from '../utils/functions.js';
 import { getCompanySocialLinks, getEmailsService, getPhoneNumbersService } from '../services/googleSearchService.js';
 import CustomError from '../utils/CustomError.js';
 import { lockControllerForUser, unlockControllerForUser } from '../services/requestLocker.js';
 import Team from '../models/teamModel.js';
+
+
+
 
 // Create a new profile
 const createLead = async (req, res, next) => {
@@ -47,6 +51,7 @@ const createLead = async (req, res, next) => {
 
         // we have to replace if this profile already exists with this customer previous
         const existingLead = await Lead.findOne({ owner, linkedInId: data.linkedInId });
+    
 
         let lead;
 
@@ -88,13 +93,14 @@ const createLead = async (req, res, next) => {
                 }
             }
         }
-
         await folder.save();
         res.status(200).json({ success: true, result: lead });
     } catch (error) {
         next(error)
     }
 };
+
+
 
 // Get a single profile by ID
 const getProfileById = async (req, res, next) => {
@@ -128,6 +134,8 @@ const updateProfileById = async (req, res, next) => {
 
 // Delete a profile by ID
 const deleteLeads = async (req, res, next) => {
+    console.log("Deleting files...");
+    console.log(req.body)
     const { leadIds, folderId } = req.body;
     try {
         if (!leadIds || !Array.isArray(leadIds) || !folderId) {
@@ -147,6 +155,60 @@ const deleteLeads = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//Delete by files name 
+const deleteByFiles = async (req, res, next) => {
+    const { filenames } = req.body;
+    if (!filenames || !Array.isArray(filenames)) {
+      return res.status(400).json({ message: "Invalid filenames array" });
+    }
+  
+    try {
+      const deletedLeads = await Lead.deleteMany({ filename: { $in: filenames } });
+      if (deletedLeads.deletedCount === 0) {
+        console.log("No leads found with the specified filenames");
+      } else {
+        console.log(`${deletedLeads.deletedCount} leads deleted successfully`);
+      }
+      const deletedSummaries = await addedSummary.deleteMany({
+        filename: { $in: filenames },
+      });
+      if (deletedSummaries.deletedCount === 0) {
+        console.log("No added summaries found with the specified filenames");
+      } else {
+        console.log(`${deletedSummaries.deletedCount} added summaries deleted successfully`);
+      }
+      res.status(200).json({
+        success: true,
+        message: `${deletedLeads.deletedCount + deletedSummaries.deletedCount} records deleted successfully`,
+      });
+    } catch (error) {
+      console.error("Error deleting files:", error.message);
+      next(error); 
+    }
+  };
+  
+  //get addedsumary Data
+  const getAllAddedSummaries = async (req, res, next) => {
+    try {
+      const summaries = await addedSummary.find();
+  
+      if (summaries.length === 0) {
+        return res.status(404).json({ message: "No added summaries found" });
+      }
+  
+      res.status(200).json({
+        success: true,
+        addedData: summaries, 
+        message: `${summaries.length} added summaries found.`,
+      });
+    } catch (error) {
+      console.error("Error fetching added summaries:", error.message);
+      next(error); 
+    }
+  };
+
 
 // Get all the customer profiles 
 const getLeadsOfCustomer = async (req, res, next) => {
@@ -2129,7 +2191,7 @@ const createBulkLeads = async (req, res, next) => {
         // if (req.user.plan.creditsUsed >= req.user.plan.credits) {
         //     throw new Error(`You have used all of your ${req.user.plan.credits} credits`)
         // }
-
+ 
         const mainLogic = async () => {
             // First Extract company Names from the leads where there is the "currentPosition" field
             leads = leads.map((lead) => {
@@ -2159,6 +2221,7 @@ const createBulkLeads = async (req, res, next) => {
             })
 
             // sort the leads 
+            console.log(leads)
             leads = leads.sort((a, b) => a.id - b.id);
 
             // map on all leads and extract there data as much as possible and save the leads (linkedin users profiles)
@@ -2265,7 +2328,6 @@ const createBulkLeads = async (req, res, next) => {
                     }
                 }
             }))
-
             let newLeadsAdded = 0;
 
             // this will be updated in the below logic when a lead is added
@@ -2284,10 +2346,11 @@ const createBulkLeads = async (req, res, next) => {
                         );
                         throw new CustomError(`only ${newLeadsAdded} Added. Remaining not added because not enough credits`, 409);
                     }
-                    // Add new lead
+                    const fileName = lead.userName?.split(' ')[0] || "default_filename"; 
                     const newLead = new Lead({
                         owner: team,
                         folderId: folderId,
+                        filename: fileName,
                         firstName: lead.userName?.split(' ')[0],
                         lastName: lead.userName?.split(' ')[1],
                         name: lead.userName,
@@ -2381,7 +2444,7 @@ export {
     getProfileById,
     updateProfileById,
     deleteLeads,
-    getLeadsOfCustomer,
+     getLeadsOfCustomer,
     assignLeadToTeamMember,
     getLeadsOfFolder,
     addNotesAndTags,
@@ -2392,7 +2455,9 @@ export {
     updateMultipleLeadsStatus,
     checkLeadsExistance,
     createBulkLeads,
-    deleteAdminImportedLeads
+    deleteAdminImportedLeads,
+    deleteByFiles,
+    getAllAddedSummaries
 }
 
 

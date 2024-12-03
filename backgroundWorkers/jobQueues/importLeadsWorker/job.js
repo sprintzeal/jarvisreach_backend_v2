@@ -2,7 +2,7 @@ import { Worker } from "worker_threads";
 import path from "path";
 import XLSX from "xlsx";
 import nodemailer from "nodemailer";
-import fs from 'fs';
+import fs from "fs";
 import DataSummary from '../../../models/leadStatus.js';
 import url from 'url';
 import { json } from "express";
@@ -205,8 +205,10 @@ export async function importsWorker(jsonLeadsData, email, originalFilenames) {
         logData.push(`Worker exited with code: ${code}`);
         if (code === 0) {
             logData.push("Worker completed successfully.");
+            console.log("Worker completed successfully.");
         } else {
             logData.push(`Worker exited with error code: ${code}`);
+            console.log(`Worker exited with error code: ${code}`);
         }
     });
 }

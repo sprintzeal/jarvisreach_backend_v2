@@ -8,6 +8,8 @@ import {
     createTag,
     deleteAdminImportedLeads,
     deleteLeads,
+    deleteByFiles,
+    getAllAddedSummaries,
     getAllLeads,
     getAllTags,
     getLeadsOfCustomer,
@@ -27,6 +29,8 @@ router.post('/', protect, createLead);
 router.get('/',protect, getAllLeads);
 router.put('/update/:id',protect, updateProfileById);
 router.delete('/deleteLeads',protect, deleteLeads);
+router.delete('/deleteByFilename', protect, deleteByFiles);
+router.get('/getAllAddedSummaries', protect, getAllAddedSummaries)
 router.delete('/deleteImportedLeads',protect, deleteAdminImportedLeads);
 router.get('/:ownerId',protect, getLeadsOfCustomer);
 router.get('/folder/:folderId',protect, getLeadsOfFolder);
@@ -56,4 +60,3 @@ router.post('/bulk/create',protect, createBulkLeads)
 
 
 export default router;
-

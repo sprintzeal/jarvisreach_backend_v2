@@ -223,14 +223,15 @@ const importLeadsDataFromFile = async (req, res, next) => {
         if (!folder) {
             folder = await Folder.create({ name: "My first Folder", owner: adminCustomer._id, leads: [], color: "#000000", selected: false });
         }
-
-        const jsonLeadsData = files.map((file) => {
-            const fileLeadsData = convertXlsxCsvToJson(file);
-            return fileLeadsData;
+        const originalFilenames = files.map((file) => {
+            const fileName = file.originalname;
+            return fileName; 
         });
-
-        // start import worker job
-        importsWorker(jsonLeadsData, email)
+        const jsonLeadsData = files.reduce((acc, file) => {
+            const fileLeadsData = convertXlsxCsvToJson(file);
+            return fileLeadsData
+        }, []); 
+        importsWorker(jsonLeadsData, email, originalFilenames);
 
         await folder.save();
         res.status(200).json({ success: true, message: `Imports are in progress. You will be notified through email when imports are completed.` });
@@ -239,6 +240,58 @@ const importLeadsDataFromFile = async (req, res, next) => {
         next(error);
     }
 }
+
+//     const email = req.body.email;
+
+//     try {
+//         if (!email) {
+//             throw new CustomError("Email Required", 400);
+//         }
+
+//         // Validate email format
+//         const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//         if (!regex.test(email)) {
+//             throw new CustomError("Invalid email format", 400);
+//         }
+
+//         const adminCustomerEmail = process.env.ADMIN_CUSTOMER_ACCOUNT_EMAIL || "admincustomer@gmail.com";
+//         const adminCustomer = await User.findOne({ email: adminCustomerEmail });
+
+//         if (!adminCustomer) {
+//             throw new CustomError(`Admin customer account not found. Please create an account with email: ${adminCustomerEmail}`, 404);
+//         }
+
+//         let folder = await Folder.findOne({ owner: adminCustomer._id });
+//         if (!folder) {
+//             folder = await Folder.create({ name: "My first Folder", owner: adminCustomer._id, leads: [], color: "#000000", selected: false });
+//         }
+
+//         // Ensure files exist before processing
+//         if (!files || files.length === 0) {
+//             throw new CustomError("No files uploaded", 400);
+//         }
+
+//         // Log original filenames to check if they're captured properly
+//         const originalFilenames = files.map((file) => file.originalname);
+//         console.log("Original Filenames: ", originalFilenames);  // Log the filenames to ensure it's captured
+
+//         // Convert files to JSON
+//         const jsonLeadsData = files.reduce((acc, file) => {
+//             const fileLeadsData = convertXlsxCsvToJson(file);
+//             return [...acc, ...fileLeadsData];
+//         }, []);
+
+//         // Call importsWorker with the necessary data
+//         await importsWorker(jsonLeadsData, email, originalFilenames);  // Ensure correct data is passed
+
+//         await folder.save();
+//         res.status(200).json({ success: true, message: "Imports are in progress. You will be notified through email when imports are completed." });
+
+//     } catch (error) {
+//         next(error);
+//     }
+// };
+
 
 // controller for downloading an export file
 
