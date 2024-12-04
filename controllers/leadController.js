@@ -2147,6 +2147,7 @@ const updateMultipleLeadsStatus = async (req, res, next) => {
 
 const checkLeadsExistance = async (req, res, next) => {
     const team = req.team;
+
     try {
         const { linkedinIds } = req.body;
 
@@ -2154,9 +2155,23 @@ const checkLeadsExistance = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Leads IDs (array) are required' });
         }
 
-        const leads = await Lead.find({ owner: team._id, linkedInId: { $in: linkedinIds } }).select("linkedInId")
-        const existingLinkedinIds = leads.map(lead => lead.linkedInId)
-        res.status(200).json({ success: true, result: existingLinkedinIds });
+        // Limit batch size to optimize MongoDB performance
+        const batchSize = 1000;
+        const existingLinkedinIds = new Set();
+
+        for (let i = 0; i < linkedinIds.length; i += batchSize) {
+            const batch = linkedinIds.slice(i, i + batchSize);
+
+            // Efficient query using indexes
+            const leads = await Lead.find(
+                { owner: team._id, linkedInId: { $in: batch } },
+                { linkedInId: 1 } // Project only the required field
+            ).lean(); // Use `lean()` to avoid Mongoose document overhead
+
+            leads.forEach(lead => existingLinkedinIds.add(lead.linkedInId));
+        }
+
+        res.status(200).json({ success: true, result: Array.from(existingLinkedinIds) });
     } catch (error) {
         next(error);
     }
@@ -2197,7 +2212,6 @@ const createBulkLeads = async (req, res, next) => {
             leads = leads.map((lead) => {
                 const companyName = lead.currentPosition?.split(' at ')[1];
                 if (companyName) {
-                    console.log(companyName)
                     return {
                         ...lead,
                         companyName
@@ -2212,6 +2226,7 @@ const createBulkLeads = async (req, res, next) => {
             // we have to only give those leads to AI where there is a headline but no companyName
             // so it can extract the company names
             const leadsWithHeadline = leads.filter(l => l.headline && !l.companyName);
+            
             // here we have to extract the company name from the leads headline using GPT
             const leadsProcessedWithGPT = await extractCompanyName(leadsWithHeadline);
             // now we have to replace the leads processed with GPT in out leads
@@ -2258,7 +2273,6 @@ const createBulkLeads = async (req, res, next) => {
 
                     // get the company name from the headline
                     const companyName = lead.companyName;
-                    console.log(companyName)
                     if (!companyName) {
                         return { ...lead, linkedInId }
                     }
@@ -2274,54 +2288,51 @@ const createBulkLeads = async (req, res, next) => {
                     // we will verify the email in not verified then we will use out sequence of emails pattrens function
                     let emails = [];
 
-                    const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
-                    for (const attempt of queryAttempts) {
-                        emails = await getEmailsService(companyName.toLowerCase(), lead.userName, attempt);
-                        if (emails.result?.modifiedEmails && emails.result?.modifiedEmails.length > 0) {
-                            break; // Exit the loop if emails are found
+                    const companyUrl = companySocialLinks.result.filter(link => link.type === "official")[0]?.link;
+                    if (companyUrl) {
+                        const companyTLDArray = new URL(companyUrl).host.split(".");
+                        const companyDomain = companyTLDArray[companyTLDArray.length - 2] + "." + companyTLDArray[companyTLDArray.length - 1];
+                        // here we will generate emails from sequences and verify them
+                        // get the domain from companyUrl
+                        const generated = await generateEmailFromSequenceAndVerify(lead.userName, companyDomain);
+                        if (generated.success) {
+                            emails.push(generated.email)
                         }
                     }
 
-                    const modifiedEmails = emails.result?.modifiedEmails || [];
-
-                    let finalizedEmails = []
-
-                    // emails verification of emails generated from pattren 
-                    const verifiedEmailsFromPattern = await Promise.all(modifiedEmails.map(async emailObj => {
-                        const verified = await sixStepsEmailVerification(emailObj.email)
-                        if (verified.success) {
-                            return {
-                                ...emailObj,
-                                validationStatus: 1,
-                                valid: true,
-                                type: "Work"
+                    if (emails.length === 0) {
+                        let finalizedEmails = []
+                        const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
+                        for (const attempt of queryAttempts) {
+                            finalizedEmails = await getEmailsService(companyName.toLowerCase(), lead.userName, attempt);
+                            if (finalizedEmails.result?.modifiedEmails && finalizedEmails.result?.modifiedEmails.length > 0) {
+                                break; // Exit the loop if emails are found
                             }
                         }
-                        return undefined;
-                    }));
-                    const filteredVerifiedEmails = verifiedEmailsFromPattern.filter(emailObj => emailObj !== undefined);
-
-                    if (filteredVerifiedEmails.length > 0) {
-                        finalizedEmails = filteredVerifiedEmails;
-                    } else {
-                        const companyUrl = companySocialLinks.result.filter(link => link.type === "official")[0]?.link;
-                        if (companyUrl) {
-                            const companyTLDArray = new URL(companyUrl).host.split(".");
-                            const companyDomain = companyTLDArray[companyTLDArray.length - 2] + "." + companyTLDArray[companyTLDArray.length - 1];
-                            // here we will generate emails from sequences and verify them
-                            // get the domain from companyUrl
-                            const generated = await generateEmailFromSequenceAndVerify(lead.userName, companyDomain);
-                            if (generated.success) {
-                                finalizedEmails.push(generated.email)
+    
+                        const modifiedEmails = finalizedEmails.result?.modifiedEmails || [];
+        
+                        // emails verification of emails generated from pattren 
+                        const verifiedEmailsFromPattern = await Promise.all(modifiedEmails.map(async emailObj => {
+                            const verified = await sixStepsEmailVerification(emailObj.email)
+                            if (verified.success) {
+                                return {
+                                    ...emailObj,
+                                    validationStatus: 1,
+                                    valid: true,
+                                    type: "Work"
+                                }
                             }
-                        }
-                        // is there are no verifiedemails from the generated patterns then we will work on sequences
+                            return undefined;
+                        }));
+                        const filteredVerifiedEmails = verifiedEmailsFromPattern.filter(emailObj => emailObj !== undefined);
+                        emails = filteredVerifiedEmails;
                     }
 
                     return {
                         ...lead,
                         links: companySocialLinks.result || [],
-                        emails: finalizedEmails,
+                        emails: emails,
                         phones: phoneNumbers.result || [],
                         companyName,
                         linkedInId

@@ -1,10 +1,4 @@
-import dns from "dns"
-import GibberishDetective from "gibberish-detective";
-import net from "net";
-import nodemailer from "nodemailer";
-import { validateEmail } from "../services/emailValidation.js";
 import EmailValidator from "email-deep-validator";
-import { verifyEmail } from "@devmehq/email-validator-js";
 import { promptChatgpt } from "../services/openAI.js";
 export function generateEmailsFromPattrens(patterns, personName) {
 
@@ -63,141 +57,9 @@ function sanitizeEmail(email) {
     return sanitizedEmail;
 }
 
-
-
 export const sixStepsEmailVerification = async (email) => {
-    console.log(email)
+
     try {
-
-        // return { success: true, step: 6, reason: "Email Sent Successfully" }
-
-        // Step 1: Syntax Check
-        // Purpose: Validate the email address structure.
-        // How: Use regex to match the general pattern of an email address.
-        const emailSyntaxRegex = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-        const isValidSyntax = emailSyntaxRegex.test(email.toLowerCase());
-        if (!isValidSyntax) {
-            return { success: false, step: 1, reason: "Invalid Email Syntax" }
-        }
-
-        // // Step 2: Gibberish Check
-        // // Purpose: Detect non-existent or fake email addresses.
-        // const gibberish = GibberishDetective({ useCache: false });
-        // const detectGibberish = gibberish.detect('test@gmail.com')
-        // if (detectGibberish) {
-        //     return { success: false, step: 2, reason: "Gibberish Email Address" }
-        // }
-
-        // Step 3: Domain Existence Check
-        // This step involves checking if the domain of the email address exists by looking up its DNS records.
-        const domain = email.split('@')[1];
-        const isDomainExists = await new Promise((resolve, reject) => {
-            dns.resolveMx(domain, (err, addresses) => {
-                if (err || addresses.length === 0) {
-                    resolve(false); // Domain does not exist or no MX records
-                } else {
-                    resolve(true); // Domain exists and has MX records
-                }
-            });
-        });
-        if (!isDomainExists) {
-            return { success: false, step: 3, reason: "Domain Does Not Exist" }
-        }
-
-        // Step 4: MX Record Check
-        // This step is about checking if the domain has valid MX records, which are used to route emails.
-
-        const validatedMRecord = await new Promise((resolve, reject) => {
-            dns.resolveMx(domain, (err, addresses) => {
-                if (err || addresses.length === 0) {
-                    resolve(false); // No MX record found
-                } else {
-                    resolve(true); // MX record found
-                }
-            });
-        });
-        if (!validatedMRecord) {
-            return { success: false, step: 4, reason: "Invalid MX Record" }
-        }
-
-        // Step 5: Catch-All Domain Check
-        // This step checks whether a domain is a "catch-all" domain, meaning it accepts any email, even if the specific address does not exist.
-        // const testEmail = `nonexistent@${domain}`;
-        // const smtpServer = await new Promise((resolve, reject) => {
-        //     dns.resolveMx(domain, (err, addresses) => {
-        //         if (err) {
-        //             reject(err);
-        //         } else {
-        //             // Sort by priority (lower preference value has higher priority)
-        //             addresses.sort((a, b) => a.priority - b.priority);
-        //             resolve(addresses[0].exchange);
-        //         }
-        //     });
-        // });
-
-        // const isCatchAll = await new Promise((resolve, reject) => {
-        //     const client = net.createConnection(25, smtpServer);
-        //     let stage = 0;
-
-        //     const timeout = setTimeout(() => {
-        //         client.destroy();
-        //         reject(new Error('SMTP connection timeout'));
-        //     }, 10000); // 10 seconds timeout
-
-        //     client.on('data', (data) => {
-        //         const response = data.toString();
-
-        //         if (stage === 0 && response.startsWith('220')) {
-        //             client.write(`HELO hi\r\n`);
-        //             stage++;
-        //         } else if (stage === 1 && response.startsWith('250')) {
-        //             client.write(`MAIL FROM: <no-reply@${domain}>\r\n`);
-        //             stage++;
-        //         } else if (stage === 2 && response.startsWith('250')) {
-        //             client.write(`RCPT TO: <${testEmail}>\r\n`);
-        //             stage++;
-        //         } else if (stage === 3) {
-        //             clearTimeout(timeout);
-        //             if (response.startsWith('250')) {
-        //                 resolve(true); // Catch-all domain
-        //             } else {
-        //                 resolve(false); // Not a catch-all domain
-        //             }
-        //             client.end();
-        //         }
-        //     });
-
-        //     client.on('error', (err) => {
-        //         clearTimeout(timeout);
-        //         reject(err);
-        //     });
-
-        //     client.on('end', () => {
-        //         clearTimeout(timeout);
-        //     });
-        // });
-        // if (!isCatchAll) {
-        //     return { step: 5, reason: "Not Catch-All Domain" }
-        // }
-
-
-        // // Step 6: SMTP Authentication
-        // // Purpose: Validate the email by attempting to connect.
-        // const emailExists = await validateEmail(email);
-
-        // if (!emailExists.validators.smtp.valid) {
-        //     return { success: false, step: 6, reason: "Email Not Found" }
-        // }
-
-        // if (emailExists.validators.smtp.valid) {
-        //     return { success: true, step: 6, reason: "Email Found" }
-        // }
-
-
-
-
-        // Step 6: SMTP Authentication (lib 2)
-        // Purpose: Validate the email by attempting to connect.
 
         const emailValidator = new EmailValidator();
         const { wellFormed, validDomain, validMailbox } = await emailValidator.verify(email);
@@ -209,8 +71,6 @@ export const sixStepsEmailVerification = async (email) => {
         if (validMailbox) {
             return { success: true, step: 6, reason: "Email Found" }
         }
-
-
 
         // Step 6: SMTP Authentication (lib3)
         // Purpose: Validate the email by attempting to connect.
@@ -241,7 +101,6 @@ export const sixStepsEmailVerification = async (email) => {
 }
 
 export async function generateEmailFromSequenceAndVerify(personName, domain) {
-
     const firstName = personName.split(" ")[0]?.toLowerCase();
     const lastName = personName.split(" ")[1]?.toLowerCase();
 
@@ -257,45 +116,61 @@ export async function generateEmailFromSequenceAndVerify(personName, domain) {
         "(lastname)",
         "(firstname)_(lastname)",
         "(lastname)(f)",
-        "(lastname).(firstname)"
+        "(lastname).(firstname)",
+        "(lastname)_(firstname)",
+        "(f)_(lastname)",
+        "(lastname)(firstname)",
+        "(f).(l)",
+        "(firstname).(l)",
+        "(l)(firstname)"
     ];
 
-    const generatedEmails = patterns.map(pattern => {
-        const emailPattern = pattern
-            .replace("(firstname)", firstName.toLowerCase())
-            .replace("(lastname)", lastName.toLowerCase())
+    const generatedEmails = patterns.map(pattern =>
+        pattern
+            .replace("(firstname)", firstName)
+            .replace("(lastname)", lastName)
             .replace("(f)", firstInitial)
-            .replace("(l)", lastInitial);
+            .replace("(l)", lastInitial) + `@${domain}`
+    );
 
-        return `${emailPattern}@${domain}`;
-    });
+    // Batch size for parallel execution
+    const batchSize = 5;
 
-    // now verify the emails and once an email is verified we will stop and return it
-    let finalizedEmail = null;
-
-    for (const email of generatedEmails) {
-        const verified = await sixStepsEmailVerification(email);
-        if (verified.success && finalizedEmail === null) {
-            finalizedEmail = email;
-            break;
-        }
-    }
-    if (finalizedEmail) {
-        return {
-            success: true,
-            email: {
-                email: finalizedEmail,
-                validationStatus: 1,
-                valid: true,
-                type: "Work"
+    // Helper function to verify emails in a batch
+    async function verifyBatch(emails) {
+        const verificationResults = await Promise.all(
+            emails.map(email => sixStepsEmailVerification(email))
+        );
+        // Find the first successful verification in the batch
+        for (let i = 0; i < verificationResults.length; i++) {
+            if (verificationResults[i].success) {
+                return emails[i]; // Return the verified email
             }
         }
-    } else {
-        return {
-            success: false,
+        return null;
+    }
+
+    // Process emails in batches
+    for (let i = 0; i < generatedEmails.length; i += batchSize) {
+        const batch = generatedEmails.slice(i, i + batchSize);
+        const verifiedEmail = await verifyBatch(batch);
+        if (verifiedEmail) {
+            return {
+                success: true,
+                email: {
+                    email: verifiedEmail,
+                    validationStatus: 1,
+                    valid: true,
+                    type: "Work"
+                }
+            };
         }
     }
+
+    // If no email is verified
+    return { success: false };
 }
+
 
 
 
@@ -336,7 +211,7 @@ export function calculateDaysBetween(startDateStr, endDateStr) {
  * @returns {string} - The extracted company name, or a message indicating that the company name was not found.
  */
 export async function extractCompanyName(leads) {
-
+console.log("using GPT")
     const headLines = [];
     let companyNames = [];
 
@@ -353,20 +228,21 @@ export async function extractCompanyName(leads) {
         return leads
     }
     let allNames = [];
-    if(resarry.length === 1) {
+    if (resarry.length === 1) {
         allNames = resarry
-    } 
+    }
     else {
         allNames = resarry.map((val, index) => val.split(`${index + 1}. `)[1]);
     }
     companyNames = allNames;
-    console.log(allNames)
+
     const leadsWithComapnyNames = leads.map((lead, index) => {
         return {
             ...lead,
             companyName: companyNames[index]
         }
     });
+
     const finalresult = leadsWithComapnyNames.map((lead, index) => {
         const { companyName, ...rest } = lead;
 
