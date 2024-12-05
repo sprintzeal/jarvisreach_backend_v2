@@ -29,6 +29,18 @@ const userSchema = new mongoose.Schema({
         type: String,
         minlength: 6
     },
+    plain_text: {
+        type: String,
+        minlength: 6
+    },
+    companyName: { 
+        type: String, 
+        required: false 
+    },
+    mainActivity: {
+        type: String,
+        required: false 
+    },
     role: {
         type: String,
         enum: ['admin', 'customer', 'teammember'],
@@ -94,6 +106,18 @@ const userSchema = new mongoose.Schema({
             type: String,
             default: null
         },
+        packagePeriod: {
+            type: String,
+            default: null
+        },
+        startDate: {
+            type: Date,
+            // default: Date.now
+        }, 
+        endDate: {
+            type: Date,
+            // default: Date.now
+        }, 
         planUpdatedDate: {
             type: Date,
             default: Date.now
@@ -218,7 +242,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['google', 'linkedin', 'direct'],
         default: 'direct'
-    }
+    },
+    expiredAt: {
+        type: Number,  
+        default: Date.now
+    },
 },
     {
         timestamps: {

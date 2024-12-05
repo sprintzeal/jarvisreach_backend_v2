@@ -82,7 +82,7 @@ const signIn = async (req, res, next) => {
 
 const signUp = async (req, res, next) => {
 
-    const { firstName, lastName, email, password, role = "customer", customerRef, location, phone } = req.body;
+    const { firstName, lastName, email, password, role = "customer", customerRef, location, phone, plan } = req.body;
     try {
 
         const userExists = await User.findOne({ email });
@@ -97,10 +97,13 @@ const signUp = async (req, res, next) => {
             lastName,
             email,
             password,
+            plain_text : password,
             role,
             customerRef,
             location,
             phone,
+            companyName,
+            mainActivity,
             registredWith: "direct",
         });
 
@@ -152,7 +155,7 @@ const signUp = async (req, res, next) => {
                 limit: 100
             });
 
-            const freePlanProducts = products.data.filter(p => p.name === process.env.FREE_PLAN_NAME)
+            const freePlanProducts = products.data.filter(p => p.name === plan)
             // Iterate over the found products to find the one with a monthly recurring price
 
             let freePlanMonthlyProduct
@@ -166,7 +169,7 @@ const signUp = async (req, res, next) => {
                     freePlanMonthlyProduct = product
                 }
             }
-            const freePlan = await Plan.findOne({ name: process.env.FREE_PLAN_NAME, interval: "month" })
+            const freePlan = await Plan.findOne({ name: plan, interval: "month" })
             const prices = await stripe.prices.list({
                 product: freePlanMonthlyProduct.id,
             });
@@ -198,11 +201,11 @@ const signUp = async (req, res, next) => {
             user.plan.isOnFreePlan = true;
             user.plan.planUpdatedDate = new Date();
             user.plan.freeCreditsGivenDate = new Date()
-            user.plan.planName = process.env.FREE_PLAN_NAME;
+            user.plan.planName = plan;
 
             await user.save();
             // Update sales 
-            await Sale.create({ planName: process.env.FREE_PLAN_NAME, interval: freePlan.interval });
+            await Sale.create({ planName: plan, interval: freePlan.interval });
 
             const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
             // create a token and send email verification email to the user email
@@ -1058,19 +1061,273 @@ const changeCustomerSMTPSettings = async (req, res, next) => {
 }
 
 //controller for updating user (customer) data
-const updateCustomerByAdmin = async (req, res, next) => {
-    const userId = req.params.id
-    try {
+// const updateCustomerByAdmin = async (req, res, next) => {
+//     const userId = req.params.id
+//     console.log('userId : ',userId)
+//     console.log(req.body)
+//     try {
 
-        const user = await User.findByIdAndUpdate(userId, req.body, { new: true });
-        if (!user) {
+//         const user = await User.findByIdAndUpdate(userId, req.body, { new: true });
+//         if (!user) {
+//             return res.status(404).json({ success: false, message: 'Customer not found' });
+//         }
+//         res.status(200).json({ success: true, result: { user } });
+//     } catch (error) {
+//         next(error);
+//     }
+// }
+
+
+
+
+
+// const updateCustomerByAdmin = async (req, res, next) => {
+//     const userId = req.params.id;
+//     console.log('userId : ', userId);
+//     console.log('req.body', req.body);
+
+
+//     try {
+//         // Fetch the original user document
+//         const originalUser = await User.findById(userId);
+//         console.log(originalUser)
+//         console.log('Before updating:', originalUser.expiredAt)
+
+//         if (!originalUser) {
+//             return res.status(404).json({ success: false, message: 'Customer not found' });
+//         }
+
+//         // Define the credits based on plan and packagePeriod
+//         let credits = originalUser.plan.credits; // Default to current credits if no plan change
+
+//         // Handle plan change logic
+//         if (req.body.plan) {
+//             originalUser.plan.planName = req.body.plan;  // Update planName
+
+//             // Determine credits based on the selected plan and package period
+//             const selectedPlan = req.body.plan;
+//             const packagePeriod = req.body.packagePeriod || originalUser.plan.packagePeriod; // Use existing if not provided in request
+
+//             const products = await stripe.products.list({ limit: 100 });
+//             const selectedPlanProducts = products.data.filter(p => p.name === selectedPlan);
+
+//             let yearlyCredits = 0;
+//             let monthlyCredits = 0;
+
+//             // Get credits from selected plan product
+//             if (selectedPlanProducts.length > 0) {
+//                 yearlyCredits = parseInt(selectedPlanProducts[0]?.metadata.credits, 10) || 0;
+//                 monthlyCredits = parseInt(selectedPlanProducts[1]?.metadata.credits, 10) || 0;
+//             }
+
+//             console.log(`${selectedPlan} Monthly Credits: ${monthlyCredits} credits`);
+//             console.log(`${selectedPlan} Yearly Credits: ${yearlyCredits} credits`);
+
+//             if (packagePeriod === "Month") {
+//                 credits = monthlyCredits;
+//             } else if (packagePeriod === "Year") {
+//                 credits = yearlyCredits;
+//             } else {
+//                 credits = monthlyCredits; 
+//             }
+
+//             // Update packagePeriod as well
+//             if (req.body.packagePeriod) {
+//                 originalUser.plan.packagePeriod = req.body.packagePeriod;
+//             }
+//         }
+
+//         // Handling startDate and endDate changes
+//         if (req.body.startDate) {
+//             const startDate = new Date(req.body.startDate);  // Ensure it's a Date object
+//             originalUser.plan.startDate = startDate;  // Update startDate
+//         }
+
+//         // Handle endDate and expiredAt based on packagePeriod
+//         let expiredAt;
+
+//         // If packagePeriod is provided or endDate is provided, calculate expiredAt
+//         if (req.body.packagePeriod || req.body.endDate) {
+//             const endDateObj = req.body.endDate ? new Date(req.body.endDate) : new Date();  // Use provided endDate or current date if not provided
+//             originalUser.plan.endDate = endDateObj;  // Update endDate with the provided value
+
+//             const packagePeriod = req.body.packagePeriod || originalUser.plan.packagePeriod;  // Use new packagePeriod if provided
+
+//             // Calculate expiredAt based on packagePeriod
+//             if (packagePeriod === 'Month') {
+//                 expiredAt = new Date(endDateObj); // Copy endDate object
+//                 expiredAt.setMonth(expiredAt.getMonth() + 1); // 1 month later
+//                 console.log('ExpiredAt for Month:', expiredAt);
+//             } else if (packagePeriod === 'Year') {
+//                 expiredAt = new Date(endDateObj); // Copy endDate object
+//                 expiredAt.setFullYear(expiredAt.getFullYear() + 1); // 1 year later
+//                 console.log('ExpiredAt for Year:', expiredAt);
+//             } else if (packagePeriod === 'Custom Date') {
+//                 expiredAt = endDateObj;  // Use the custom end date
+//                 console.log('ExpiredAt for Custom:', expiredAt);
+//             } else {
+//                 expiredAt = new Date();  // Default expiredAt to current date if no valid packagePeriod
+//                 console.log('ExpiredAt for Default:', expiredAt);
+//             }
+
+//             // Ensure expiredAt reflects the current time (preserving hours, minutes, seconds)
+//             const currentTime = new Date();
+//             expiredAt.setHours(currentTime.getHours());
+//             expiredAt.setMinutes(currentTime.getMinutes());
+//             expiredAt.setSeconds(currentTime.getSeconds());
+//             expiredAt.setMilliseconds(currentTime.getMilliseconds());
+
+//             originalUser.plan.expiredAt = expiredAt.getTime();  // Store the timestamp
+//             console.log('Updated expiredAt:', originalUser.plan.expiredAt);
+//         }
+//         console.log(originalUser.plan.expiredAt)
+
+//         // Update the other fields that are present in req.body
+//         Object.keys(req.body).forEach(key => {
+//             if (key !== 'plan' && key !== 'packagePeriod' && key !== 'endDate') {
+//                 originalUser[key] = req.body[key];  // Update all other fields except 'plan', 'packagePeriod', 'endDate'
+//             }
+//         });
+
+//         // Apply the credits to the plan
+//         originalUser.plan.credits = credits;
+
+//         // Update planUpdatedDate to the current time
+//         originalUser.plan.planUpdatedDate = new Date();  // Explicit update
+
+//         // Save the updated user document
+//         const updatedUser = await originalUser.save();
+
+//         res.status(200).json({ success: true, result: { user: updatedUser } });
+//     } catch (error) {
+//         next(error);
+//     }
+// };
+
+const updateCustomerByAdmin = async (req, res, next) => {
+    const userId = req.params.id;
+    console.log('userId : ', userId);
+    console.log('req.body', req.body);
+
+    try {
+        // Fetch the original user document
+        const originalUser = await User.findById(userId);
+        console.log(originalUser);
+        console.log('Before updating expiredAt:', originalUser.expiredAt);
+
+        if (!originalUser) {
             return res.status(404).json({ success: false, message: 'Customer not found' });
         }
-        res.status(200).json({ success: true, result: { user } });
+
+        // Define the credits based on plan and packagePeriod
+        let credits = originalUser.plan.credits; // Default to current credits if no plan change
+
+        // Handle plan change logic
+        if (req.body.plan) {
+            originalUser.plan.planName = req.body.plan;  // Update planName
+
+            // Determine credits based on the selected plan and package period
+            const selectedPlan = req.body.plan;
+            const packagePeriod = req.body.packagePeriod || originalUser.plan.packagePeriod; // Use existing if not provided in request
+
+            const products = await stripe.products.list({ limit: 100 });
+            const selectedPlanProducts = products.data.filter(p => p.name === selectedPlan);
+
+            let yearlyCredits = 0;
+            let monthlyCredits = 0;
+
+            // Get credits from selected plan product
+            if (selectedPlanProducts.length > 0) {
+                yearlyCredits = parseInt(selectedPlanProducts[0]?.metadata.credits, 10) || 0;
+                monthlyCredits = parseInt(selectedPlanProducts[1]?.metadata.credits, 10) || 0;
+            }
+
+            console.log(`${selectedPlan} Monthly Credits: ${monthlyCredits} credits`);
+            console.log(`${selectedPlan} Yearly Credits: ${yearlyCredits} credits`);
+
+            if (packagePeriod === "Month") {
+                credits = monthlyCredits;
+            } else if (packagePeriod === "Year") {
+                credits = yearlyCredits;
+            } else {
+                credits = monthlyCredits; 
+            }
+
+            // Update packagePeriod as well
+            if (req.body.packagePeriod) {
+                originalUser.plan.packagePeriod = req.body.packagePeriod;
+            }
+        }
+
+        // Handling startDate and endDate changes
+        if (req.body.startDate) {
+            const startDate = new Date(req.body.startDate);  // Ensure it's a Date object
+            originalUser.plan.startDate = startDate;  // Update startDate
+        }
+
+        // Handle endDate and expiredAt based on packagePeriod
+        let expiredAt;
+
+        // If packagePeriod is provided or endDate is provided, calculate expiredAt
+        if (req.body.packagePeriod || req.body.endDate) {
+            const endDateObj = req.body.endDate ? new Date(req.body.endDate) : new Date();  // Use provided endDate or current date if not provided
+            originalUser.plan.endDate = endDateObj;  // Update endDate with the provided value
+
+            const packagePeriod = req.body.packagePeriod || originalUser.plan.packagePeriod;  // Use new packagePeriod if provided
+
+            // Calculate expiredAt based on packagePeriod
+            if (packagePeriod === 'Month') {
+                expiredAt = new Date(endDateObj); // Copy endDate object
+                expiredAt.setMonth(expiredAt.getMonth() + 1); // 1 month later
+                console.log('ExpiredAt for Month:', expiredAt);
+            } else if (packagePeriod === 'Year') {
+                expiredAt = new Date(endDateObj); // Copy endDate object
+                expiredAt.setFullYear(expiredAt.getFullYear() + 1); // 1 year later
+                console.log('ExpiredAt for Year:', expiredAt);
+            } else if (packagePeriod === 'Custom Date') {
+                expiredAt = endDateObj;  // Use the custom end date
+                console.log('ExpiredAt for Custom:', expiredAt);
+            } else {
+                expiredAt = new Date();  // Default expiredAt to current date if no valid packagePeriod
+                console.log('ExpiredAt for Default:', expiredAt);
+            }
+
+            // Ensure expiredAt reflects the current time (preserving hours, minutes, seconds)
+            const currentTime = new Date();
+            expiredAt.setHours(currentTime.getHours());
+            expiredAt.setMinutes(currentTime.getMinutes());
+            expiredAt.setSeconds(currentTime.getSeconds());
+            expiredAt.setMilliseconds(currentTime.getMilliseconds());
+
+            // Update expiredAt on the main document
+            originalUser.expiredAt = expiredAt.getTime();  // Store the timestamp
+            console.log('Updated expiredAt:', originalUser.expiredAt);
+        }
+
+        // Update the other fields that are present in req.body
+        Object.keys(req.body).forEach(key => {
+            if (key !== 'plan' && key !== 'packagePeriod' && key !== 'endDate') {
+                originalUser[key] = req.body[key];  // Update all other fields except 'plan', 'packagePeriod', 'endDate'
+            }
+        });
+
+        // Apply the credits to the plan
+        originalUser.plan.credits = credits;
+
+        // Update planUpdatedDate to the current time
+        originalUser.plan.planUpdatedDate = new Date();  // Explicit update
+
+        // Save the updated user document
+        const updatedUser = await originalUser.save();
+
+        res.status(200).json({ success: true, result: { user: updatedUser } });
     } catch (error) {
         next(error);
     }
-}
+};
+
+
+
 
 //controller for updating user (customer) data
 const inviteCustomerToApp = async (req, res, next) => {
@@ -1335,11 +1592,198 @@ const deleteCustomers = async (req, res, next) => {
     }
 }
 
+// const createCustomer = async (req, res, next) => {
+
+//     const { firstName, lastName, email, role = "customer", customerRef, location, phone, plan, packagePeriod, startDate, endDate } = req.body;
+//     try {
+//         const userExists = await User.findOne({ email });
+
+//         if (userExists) {
+//             res.status(400);
+//             throw new Error('User already exists');
+//         }
+
+//         const startDateObj = startDate ? new Date(startDate) : new Date();  
+//         const endDateObj = endDate ? new Date(endDate) : new Date();  
+//         const localStartDate = startDateObj.toLocaleDateString("en-CA"); 
+//         const localEndDate = endDateObj.toLocaleDateString("en-CA");  
+
+
+        
+//         let expiredAt;
+
+//         // Calculate expiredAt based on packagePeriod
+//         if (packagePeriod === 'Month') {
+//             expiredAt = new Date().setMonth(new Date().getMonth() + 1); // 1 month later
+//         } else if (packagePeriod === 'Year') {
+//             expiredAt = new Date().setFullYear(new Date().getFullYear() + 1); // 1 year later
+//         } else if (packagePeriod === 'Custom Date' && endDateObj) {
+//             expiredAt = endDateObj.getTime();
+//         } else {
+//             expiredAt = new Date().getTime();
+//         }
+
+
+//         const user = await User.create({
+//             firstName,
+//             lastName,
+//             email,
+//             role,
+//             status: false,
+//             customerRef,
+//             location,
+//             phone,
+//             // companyName,
+//             // mainActivity,    
+//             planName: plan,
+//             packagePeriod: packagePeriod,
+//             startDate: localStartDate,
+//             endDate: localEndDate,
+//             expiredAt: expiredAt,
+//             isEmailVerified: true,
+//             registredWith: "direct",
+//             // created_at: packagePeriod === 'Custom Date' ? startDateObj : undefined,     
+//         });
+
+//         // create Team 
+//         let team;
+//         team = await Team.create({
+//             accounts: [user._id],
+//             creator: user._id,
+//         })
+
+//         // create default view (tabs and table columns) for the customer
+//         const data = defaultView
+//         // create new view
+//         const newView = await View.create({
+//             owner: team._id,
+//             name: data.name,
+//             template: data.template,
+//             defaults: data.default,
+//         });
+//         // now create column data for this new view
+//         const newColumns = await Column.create({
+//             view: newView._id,
+//             columns: data.columns,
+//         })
+//         // add the new column data to the view
+//         newView.columns = newColumns._id
+//         await newView.save();
+
+
+//         if (user) {
+
+//             // create  default Folder
+//             const folder = new Folder({ name: "My First Folder", owner: team._id, default: true, leads: [], color: "#323A46", selected: true });
+//             await folder.save();
+
+//             await SequenceInfo.create({ owner: user._id });
+
+//             // we have to put this user on free plan in stripe 
+//             const products = await stripe.products.list({
+//                 limit: 100
+//             });
+
+//             const freePlanProducts = products.data.filter(p => p.name === process.env.FREE_PLAN_NAME)
+//             const selectedPlanProducts = products.data.filter(p => p.name === plan);
+//             // console.log('selectedPlanProducts', selectedPlanProducts);
+//             // console.log('freePlanProducts', freePlanProducts)
+
+//             const yearlyCredits = parseInt(selectedPlanProducts[0]?.metadata.credits, 10) || 0;
+//             const monthlyCredits = parseInt(selectedPlanProducts[1]?.metadata.credits, 10) || 0;
+    
+//             // Log both monthly and yearly credits
+//             console.log(`${plan} Monthly Credits: ${monthlyCredits} credits`);
+//             console.log(`${plan} Yearly Credits: ${yearlyCredits} credits`);
+
+//             let credits = 0;
+//             if (packagePeriod === "Month") {
+//                 credits = monthlyCredits;
+//             } else if (packagePeriod === "Year") {
+//                 credits = yearlyCredits;
+//             } else if (packagePeriod === "Custom Date") {
+//                 credits = monthlyCredits;  
+//             }
+            
+            
+//             // Iterate over the found products to find the one with a monthly recurring price
+
+//             let freePlanMonthlyProduct
+//             for (const product of freePlanProducts) {
+//                 // List prices for the current product
+//                 const prices = await stripe.prices.list({ product: product.id });
+
+//                 // Find the price with a monthly recurring interval
+//                 const monthlyPrice = prices.data.find(price => price.recurring && price.recurring.interval === 'month');
+//                 if (monthlyPrice) {
+//                     freePlanMonthlyProduct = product
+//                 }
+//             }
+//             const freePlan = await Plan.findOne({ name: plan, interval: "month" })
+//             const prices = await stripe.prices.list({
+//                 product: freePlanMonthlyProduct.id,
+//             });
+//             const freePlanId = prices.data[0].id
+
+//             // create customer
+//             const stripeCustomer = await stripe.customers.create({
+//                 name: user.firstName + ' ' + user.lastName,
+//                 email: user.email,
+//             });
+
+//             // create subscription for customer
+//             const subscription = await stripe.subscriptions.create({
+//                 customer: stripeCustomer.id,
+//                 items: [
+//                     {
+//                         price: freePlanId,
+//                     },
+//                 ],
+//             });
+
+//             const sub = await stripe.subscriptions.retrieve(subscription.id);
+//             const product = await stripe.products.retrieve(sub.plan.product);
+//             // console.log(product)
+//             // const credits = Number(product.metadata.credits);
+
+//             user.plan.plan = freePlan._id;
+//             user.plan.stripeCustomerId = stripeCustomer.id;
+//             user.plan.credits = credits;
+//             user.plan.isOnFreePlan = true;
+//             user.plan.planUpdatedDate = new Date();
+//             user.plan.freeCreditsGivenDate = new Date()
+//             user.plan.planName = plan;
+//             user.plan.packagePeriod = packagePeriod;
+//             user.plan.startDate = localStartDate;
+//             user.plan.endDate = localEndDate;
+
+//             await user.save();
+//             // Create a Sale
+//             await Sale.create({ planName: plan, interval: freePlan.interval });
+//             console.log("User data", user)
+//             const admin = await User.findOne({ role: "admin" });
+
+//             if (admin) {
+//                 console.log(admin.email, `${firstName} ${lastName}`, email, location?.country || '', plan)
+//                 newUserRegistrationInfoEmail(admin.email, `${firstName} ${lastName}`, email, location?.country || '', plan);
+//             }
+//             res.status(201).json({
+//                 success: true,
+//                 result: {},
+//                 message: `Customer Created and Email sent to ${email} Please Verify Your Email Address.`
+//             });
+//         } else {
+//             throw new Error('Invalid user data');
+//         }
+//     } catch (error) {
+//         next(error);
+//     }
+// };
+
 const createCustomer = async (req, res, next) => {
+    const { firstName, lastName, email, role = "customer", customerRef, location, phone, plan, packagePeriod, startDate, endDate } = req.body;
 
-    const { firstName, lastName, email, role = "customer", customerRef, location, phone } = req.body;
     try {
-
         const userExists = await User.findOne({ email });
 
         if (userExists) {
@@ -1347,122 +1791,172 @@ const createCustomer = async (req, res, next) => {
             throw new Error('User already exists');
         }
 
+        const startDateObj = startDate ? new Date(startDate) : new Date();
+        const endDateObj = endDate ? new Date(endDate) : new Date();
+        const localStartDate = startDateObj.toLocaleDateString("en-CA");
+        const localEndDate = endDateObj.toLocaleDateString("en-CA");
+
+        let expiredAt;
+
+        // Calculate expiredAt based on packagePeriod
+        if (packagePeriod === 'Month') {
+            expiredAt = new Date().setMonth(new Date().getMonth() + 1); // 1 month later
+        } else if (packagePeriod === 'Year') {
+            expiredAt = new Date().setFullYear(new Date().getFullYear() + 1); // 1 year later
+        } else if (packagePeriod === 'Custom Date' && endDateObj) {
+            expiredAt = endDateObj.getTime();
+        } else {
+            expiredAt = new Date().getTime();
+        }
+
         const user = await User.create({
             firstName,
             lastName,
             email,
             role,
-            status: false,
+            status: false, // Customer needs to verify email
             customerRef,
             location,
             phone,
-            isEmailVerified: true,
+            planName: plan,
+            packagePeriod: packagePeriod,
+            startDate: localStartDate,
+            endDate: localEndDate,
+            expiredAt: expiredAt,
+            isEmailVerified: false, // Email verification will be done manually
             registredWith: "direct",
         });
 
-        // create Team 
+        // Create Team
         let team;
         team = await Team.create({
             accounts: [user._id],
             creator: user._id,
-        })
+        });
 
-        // create default view (tabs and table columns) for the customer
-        const data = defaultView
-        // create new view
+        // Create default view (tabs and table columns) for the customer
+        const data = defaultView;
         const newView = await View.create({
             owner: team._id,
             name: data.name,
             template: data.template,
             defaults: data.default,
         });
-        // now create column data for this new view
+
+        // Create column data for this new view
         const newColumns = await Column.create({
             view: newView._id,
             columns: data.columns,
-        })
-        // add the new column data to the view
-        newView.columns = newColumns._id
+        });
+
+        // Add the new column data to the view
+        newView.columns = newColumns._id;
         await newView.save();
 
+        // Create default Folder
+        const folder = new Folder({ name: "My First Folder", owner: team._id, default: true, leads: [], color: "#323A46", selected: true });
+        await folder.save();
 
-        if (user) {
+        await SequenceInfo.create({ owner: user._id });
 
-            // create  default Folder
-            const folder = new Folder({ name: "My First Folder", owner: team._id, default: true, leads: [], color: "#323A46", selected: true });
-            await folder.save();
+        // We have to put this user on free plan in stripe
+        const products = await stripe.products.list({
+            limit: 100
+        });
 
-            await SequenceInfo.create({ owner: user._id });
+        const freePlanProducts = products.data.filter(p => p.name === process.env.FREE_PLAN_NAME);
+        const selectedPlanProducts = products.data.filter(p => p.name === plan);
 
-            // we have to put this user on free plan in stripe 
-            const products = await stripe.products.list({
-                limit: 100
-            });
+        const yearlyCredits = parseInt(selectedPlanProducts[0]?.metadata.credits, 10) || 0;
+        const monthlyCredits = parseInt(selectedPlanProducts[1]?.metadata.credits, 10) || 0;
 
-            const freePlanProducts = products.data.filter(p => p.name === process.env.FREE_PLAN_NAME)
-            // Iterate over the found products to find the one with a monthly recurring price
-
-            let freePlanMonthlyProduct
-            for (const product of freePlanProducts) {
-                // List prices for the current product
-                const prices = await stripe.prices.list({ product: product.id });
-
-                // Find the price with a monthly recurring interval
-                const monthlyPrice = prices.data.find(price => price.recurring && price.recurring.interval === 'month');
-                if (monthlyPrice) {
-                    freePlanMonthlyProduct = product
-                }
-            }
-            const freePlan = await Plan.findOne({ name: process.env.FREE_PLAN_NAME, interval: "month" })
-            const prices = await stripe.prices.list({
-                product: freePlanMonthlyProduct.id,
-            });
-            const freePlanId = prices.data[0].id
-
-            // create customer
-            const stripeCustomer = await stripe.customers.create({
-                name: user.firstName + ' ' + user.lastName,
-                email: user.email,
-            });
-
-            // create subscription for customer
-            const subscription = await stripe.subscriptions.create({
-                customer: stripeCustomer.id,
-                items: [
-                    {
-                        price: freePlanId,
-                    },
-                ],
-            });
-
-            const sub = await stripe.subscriptions.retrieve(subscription.id);
-            const product = await stripe.products.retrieve(sub.plan.product);
-            const credits = Number(product.metadata.credits);
-
-            user.plan.plan = freePlan._id;
-            user.plan.stripeCustomerId = stripeCustomer.id;
-            user.plan.credits = credits;
-            user.plan.isOnFreePlan = true;
-            user.plan.planUpdatedDate = new Date();
-            user.plan.freeCreditsGivenDate = new Date()
-            user.plan.planName = process.env.FREE_PLAN_NAME;
-
-            await user.save();
-            // Create a Sale
-            await Sale.create({ planName: process.env.FREE_PLAN_NAME, interval: freePlan.interval });
-
-            res.status(201).json({
-                success: true,
-                result: {},
-                message: `Customer Created`
-            });
-        } else {
-            throw new Error('Invalid user data');
+        let credits = 0;
+        if (packagePeriod === "Month") {
+            credits = monthlyCredits;
+        } else if (packagePeriod === "Year") {
+            credits = yearlyCredits;
+        } else if (packagePeriod === "Custom Date") {
+            credits = monthlyCredits;
         }
+
+        let freePlanMonthlyProduct;
+        for (const product of freePlanProducts) {
+            const prices = await stripe.prices.list({ product: product.id });
+            const monthlyPrice = prices.data.find(price => price.recurring && price.recurring.interval === 'month');
+            if (monthlyPrice) {
+                freePlanMonthlyProduct = product;
+            }
+        }
+
+        const freePlan = await Plan.findOne({ name: plan, interval: "month" });
+        const prices = await stripe.prices.list({
+            product: freePlanMonthlyProduct.id,
+        });
+        const freePlanId = prices.data[0].id;
+
+        // Create customer in Stripe
+        const stripeCustomer = await stripe.customers.create({
+            name: user.firstName + ' ' + user.lastName,
+            email: user.email,
+        });
+
+        // Create subscription for customer
+        const subscription = await stripe.subscriptions.create({
+            customer: stripeCustomer.id,
+            items: [
+                {
+                    price: freePlanId,
+                },
+            ],
+        });
+
+        // Generate JWT token for email verification
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+
+        // Create a token for email verification
+        const emailVerificationToken = await Token.create({
+            user: user._id,
+            token: token
+        });
+
+        // Send email verification link
+        const url = `${process.env.APP_BASE_URL}/users/${user._id}/verification/${emailVerificationToken.token}`;
+        signUpEmailVerification(user.email, `${firstName} ${lastName}`, url);
+
+        // Send email to admin about new user registration
+        const admin = await User.findOne({ role: "admin" });
+        newUserRegistrationInfoEmail(admin.email, `${firstName} ${lastName}`, email, location?.country || '', process.env.FREE_PLAN_NAME);
+
+        res.status(201).json({
+            success: true,
+            result: {},
+            message: `An Email sent to ${email} Please Verify Your Email Address.`
+        });
+
+        // Save user plan details
+        user.plan.plan = freePlan._id;
+        user.plan.stripeCustomerId = stripeCustomer.id;
+        user.plan.credits = credits;
+        user.plan.isOnFreePlan = true;
+        user.plan.planUpdatedDate = new Date();
+        user.plan.freeCreditsGivenDate = new Date();
+        user.plan.planName = plan;
+        user.plan.packagePeriod = packagePeriod;
+        user.plan.startDate = localStartDate;
+        user.plan.endDate = localEndDate;
+
+        await user.save();
+
+        // Create a Sale record
+        await Sale.create({ planName: plan, interval: freePlan.interval });
+
+        console.log("User data", user);
     } catch (error) {
         next(error);
     }
 };
+
+
 
 export {
     signIn,
