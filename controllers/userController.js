@@ -1910,6 +1910,9 @@ const createCustomer = async (req, res, next) => {
             ],
         });
 
+        const sub = await stripe.subscriptions.retrieve(subscription.id);
+        console.log('sub' ,sub)
+
         // Generate JWT token for email verification
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 
