@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const LeadSchema = new mongoose.Schema({
-    filename: { type: String, required: true },
+    filename: { type: String, required: false },
     profile: {
         name: {
             type: String,
