@@ -4,7 +4,7 @@ import Lead from "../models/leadModel.js";
 import User from "../models/userModel.js";
 import { getCompanyInfoService, getEmailsService, getPhoneNumbersService } from "../services/googleSearchService.js";
 import CustomError from "../utils/CustomError.js";
-import { checkCompanyNameInString, extractCompanyName, generateEmailFromSequenceAndVerify, generateEmailsFromPattrens, sixStepsEmailVerification } from "../utils/functions.js";
+import { checkCompanyNameInString, generateEmailFromSequenceAndVerify, generateEmailsFromPattrens, sixStepsEmailVerification } from "../utils/functions.js";
 import dns from "dns"
 
 const getCompaniesInfo = async (req, res, next) => {

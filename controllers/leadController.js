@@ -7,12 +7,11 @@ import Tag from '../models/tagModel.js';
 import User from '../models/userModel.js';
 import View from '../models/viewModel.js';
 import mongoose from 'mongoose';
-import { freeCreditsUsedEmail, leadsExportedEmail } from '../services/sendHtmlTemplates.js';
+import { freeCreditsUsedEmail } from '../services/sendHtmlTemplates.js';
 import Plan from '../models/plans/planModel.js';
 import { extractCompanyName, generateEmailFromSequenceAndVerify, sixStepsEmailVerification } from '../utils/functions.js';
 import { getCompanySocialLinks, getEmailsService, getPhoneNumbersService } from '../services/googleSearchService.js';
 import CustomError from '../utils/CustomError.js';
-import { lockControllerForUser, unlockControllerForUser } from '../services/requestLocker.js';
 import Team from '../models/teamModel.js';
 
 
@@ -51,7 +50,7 @@ const createLead = async (req, res, next) => {
 
         // we have to replace if this profile already exists with this customer previous
         const existingLead = await Lead.findOne({ owner, linkedInId: data.linkedInId });
-    
+
 
         let lead;
 
@@ -161,53 +160,53 @@ const deleteLeads = async (req, res, next) => {
 const deleteByFiles = async (req, res, next) => {
     const { filenames } = req.body;
     if (!filenames || !Array.isArray(filenames)) {
-      return res.status(400).json({ message: "Invalid filenames array" });
+        return res.status(400).json({ message: "Invalid filenames array" });
     }
-  
+
     try {
-      const deletedLeads = await Lead.deleteMany({ filename: { $in: filenames } });
-      if (deletedLeads.deletedCount === 0) {
-        console.log("No leads found with the specified filenames");
-      } else {
-        console.log(`${deletedLeads.deletedCount} leads deleted successfully`);
-      }
-      const deletedSummaries = await addedSummary.deleteMany({
-        filename: { $in: filenames },
-      });
-      if (deletedSummaries.deletedCount === 0) {
-        console.log("No added summaries found with the specified filenames");
-      } else {
-        console.log(`${deletedSummaries.deletedCount} added summaries deleted successfully`);
-      }
-      res.status(200).json({
-        success: true,
-        message: `${deletedLeads.deletedCount + deletedSummaries.deletedCount} records deleted successfully`,
-      });
+        const deletedLeads = await Lead.deleteMany({ filename: { $in: filenames } });
+        if (deletedLeads.deletedCount === 0) {
+            console.log("No leads found with the specified filenames");
+        } else {
+            console.log(`${deletedLeads.deletedCount} leads deleted successfully`);
+        }
+        const deletedSummaries = await addedSummary.deleteMany({
+            filename: { $in: filenames },
+        });
+        if (deletedSummaries.deletedCount === 0) {
+            console.log("No added summaries found with the specified filenames");
+        } else {
+            console.log(`${deletedSummaries.deletedCount} added summaries deleted successfully`);
+        }
+        res.status(200).json({
+            success: true,
+            message: `${deletedLeads.deletedCount + deletedSummaries.deletedCount} records deleted successfully`,
+        });
     } catch (error) {
-      console.error("Error deleting files:", error.message);
-      next(error); 
+        console.error("Error deleting files:", error.message);
+        next(error);
     }
-  };
-  
-  //get addedsumary Data
-  const getAllAddedSummaries = async (req, res, next) => {
+};
+
+//get addedsumary Data
+const getAllAddedSummaries = async (req, res, next) => {
     try {
-      const summaries = await addedSummary.find();
-  
-      if (summaries.length === 0) {
-        return res.status(404).json({ message: "No added summaries found" });
-      }
-  
-      res.status(200).json({
-        success: true,
-        addedData: summaries, 
-        message: `${summaries.length} added summaries found.`,
-      });
+        const summaries = await addedSummary.find();
+
+        if (summaries.length === 0) {
+            return res.status(404).json({ message: "No added summaries found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            addedData: summaries,
+            message: `${summaries.length} added summaries found.`,
+        });
     } catch (error) {
-      console.error("Error fetching added summaries:", error.message);
-      next(error); 
+        console.error("Error fetching added summaries:", error.message);
+        next(error);
     }
-  };
+};
 
 
 // Get all the customer profiles 
@@ -1898,8 +1897,8 @@ const getAllLeads = async (req, res, next) => {
 
         // we have to make the imageUrl of those leads empty (they are not working currently) so we will make there 
         // imageUrl empty
-       const modifiedLeads = uniqueLeads.map(lead => {
-            if(lead.isImportedByAdmin){
+        const modifiedLeads = uniqueLeads.map(lead => {
+            if (lead.isImportedByAdmin) {
                 return {
                     ...lead,
                     imageUrl: undefined,
@@ -2178,243 +2177,197 @@ const checkLeadsExistance = async (req, res, next) => {
 };
 
 const createBulkLeads = async (req, res, next) => {
-    let { leads, folderId } = req.body;
+    let { lead, folderId } = req.body;
     const team = req.team?._id;
 
-    // Try to acquire the lock for this controller and user
-    const isLocked = lockControllerForUser(req.user._id, "createBulkLeads");
-
-    if (isLocked) {
-        return res.status(429).json({ message: 'This Request is already in progress' });
-    }
-
-    // Create a timeout promise
-    const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => {
-            reject(new Error('Operation timed out after 50 seconds'));
-        }, 50000)
-    );
-
     try {
-        if (!leads || !Array.isArray(leads)) {
-            throw new Error("Leads data is required")
+        if (!lead) {
+            throw new Error("Lead data is required")
         }
+
         const folder = await Folder.findById(folderId);
+
         if (!folder) {
             throw new Error("folder id is required")
         }
-        // if (req.user.plan.creditsUsed >= req.user.plan.credits) {
-        //     throw new Error(`You have used all of your ${req.user.plan.credits} credits`)
-        // }
- 
-        const mainLogic = async () => {
-            // First Extract company Names from the leads where there is the "currentPosition" field
-            leads = leads.map((lead) => {
-                const companyName = lead.currentPosition?.split(' at ')[1];
-                if (companyName) {
-                    return {
-                        ...lead,
-                        companyName
-                    }
-                }
-                else {
-                    return lead
-                }
-            })
 
-            // if not then
-            // we have to only give those leads to AI where there is a headline but no companyName
-            // so it can extract the company names
-            const leadsWithHeadline = leads.filter(l => l.headline && !l.companyName);
-            
+        if (req.user.plan.creditsUsed >= req.user.plan.credits) {
+            throw new Error(`You have used all of your ${req.user.plan.credits} credits`)
+        }
+
+        // First Extract company Names from the leads where there is the "currentPosition" field
+        const companyName = lead.currentPosition?.split(' at ')[1];
+        if (companyName) {
+            lead = {
+                ...lead,
+                companyName
+            }
+        }
+        // if not then
+        // we have to only give those leads to AI where there is a headline but no companyName
+        // so it can extract the company names
+        if (lead.headline && !lead.companyName) {
             // here we have to extract the company name from the leads headline using GPT
-            const leadsProcessedWithGPT = await extractCompanyName(leadsWithHeadline);
-            // now we have to replace the leads processed with GPT in out leads
-            leads = leads.map((lead) => {
-                const processedLead = leadsProcessedWithGPT.find(l => l.id === lead.id);
-                return processedLead ? processedLead : lead
-            })
+            const leadProcessedWithGPT = await extractCompanyName([lead]);
+            console.log("leadProcessedWithGPT", leadProcessedWithGPT)
+            ""            // now we have to replace the leads processed with GPT in out leads
+            lead = leadProcessedWithGPT[0]
+        }
 
-            // sort the leads 
-            console.log(leads)
-            leads = leads.sort((a, b) => a.id - b.id);
+        let leadData = {};
 
-            // map on all leads and extract there data as much as possible and save the leads (linkedin users profiles)
-            const leadsData = await Promise.all(leads.map(async (lead) => {
-                let linkedInId
-                const isUrl = new URL(lead.userUrl)
-                if (isUrl) {
-                    linkedInId = lead.userUrl.split("/in/")[1]
-                } else {
-                    linkedInId = lead.userUrl
+        let linkedInId
+        const isUrl = new URL(lead.userUrl)
+        if (isUrl) {
+            linkedInId = lead.userUrl.split("/in/")[1]
+        } else {
+            linkedInId = lead.userUrl
+        }
+        // we will filter those leads of user which are already added
+        const existingLead = await Lead.findOne({ owner: team, linkedInId: linkedInId });
+        if (existingLead) {
+            // Remove the old lead from the folder leads array
+            const oldFolder = await Folder.findById(existingLead.folderId)
+
+            /// if the old and new folder is not the same for lead
+            if (folder?._id?.toString() !== oldFolder?._id?.toString()) {
+                const leadIndex = oldFolder.leads.indexOf(existingLead._id.toString());
+                if (leadIndex > -1) {
+                    oldFolder.leads.splice(leadIndex, 1)
+                    await oldFolder.save()
                 }
-                // we will filter those leads of user which are already added
-                const existingLead = await Lead.findOne({ owner: team, linkedInId: linkedInId });
-                if (existingLead) {
-                    // Remove the old lead from the folder leads array
-                    const oldFolder = await Folder.findById(existingLead.folderId)
+                // add the lead to the other folder
+                folder.leads.push(existingLead._id);
+            }
+            leadData = existingLead;
+        }
+        if (!lead.companyName) {
+            leadData = { ...lead, linkedInId };
+        } else {
+            // if the company name is found then apply the search services to find out the company social links and the user emails and phones
 
-                    /// if the old and new folder is not the same for lead
-                    if (folder?._id?.toString() !== oldFolder?._id?.toString()) {
-                        const leadIndex = oldFolder.leads.indexOf(existingLead._id.toString());
-                        if (leadIndex > -1) {
-                            oldFolder.leads.splice(leadIndex, 1)
-                            await oldFolder.save()
-                        }
-                        // add the lead to the other folder
-                        folder.leads.push(existingLead._id);
-                    }
-                    return existingLead;
-                }
-                if (!lead.companyName) {
-                    return { ...lead, linkedInId };
-                } else {
-                    // if the company name is found then apply the search services to find out the company social links and the user emails and phones
+            // get the company name from the headline
+            const companyName = lead.companyName;
+            if (!companyName) {
+                leadData = { ...lead, linkedInId }
+            }
+            // find the social links of company
+            // the the phones number for the company
+            const [companySocialLinks, phoneNumbers] = await Promise.all([
+                getCompanySocialLinks(companyName),
+                getPhoneNumbersService(companyName)
+            ])
 
-                    // get the company name from the headline
-                    const companyName = lead.companyName;
-                    if (!companyName) {
-                        return { ...lead, linkedInId }
-                    }
-                    // find the social links of company
-                    // the the phones number for the company
-                    const [companySocialLinks, phoneNumbers] = await Promise.all([
-                        getCompanySocialLinks(companyName),
-                        getPhoneNumbersService(companyName)
-                    ])
-                    ///////////--------------------   now we have to find out the work emails --------------------------------////////////////////////
+            ///////////--------------------   now we have to find out the work emails --------------------------------////////////////////////
 
-                    // we will use google search for email service one if not emails founs then we will use google again and then 
-                    // we will verify the email in not verified then we will use out sequence of emails pattrens function
-                    let emails = [];
+            // we will use google search for email service one if not emails founs then we will use google again and then 
+            // we will verify the email in not verified then we will use out sequence of emails pattrens function
+            let emails = [];
 
-                    const companyUrl = companySocialLinks.result.filter(link => link.type === "official")[0]?.link;
-                    if (companyUrl) {
-                        const companyTLDArray = new URL(companyUrl).host.split(".");
-                        const companyDomain = companyTLDArray[companyTLDArray.length - 2] + "." + companyTLDArray[companyTLDArray.length - 1];
-                        // here we will generate emails from sequences and verify them
-                        // get the domain from companyUrl
-                        const generated = await generateEmailFromSequenceAndVerify(lead.userName, companyDomain);
-                        if (generated.success) {
-                            emails.push(generated.email)
-                        }
-                    }
-
-                    if (emails.length === 0) {
-                        let finalizedEmails = []
-                        const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
-                        for (const attempt of queryAttempts) {
-                            finalizedEmails = await getEmailsService(companyName.toLowerCase(), lead.userName, attempt);
-                            if (finalizedEmails.result?.modifiedEmails && finalizedEmails.result?.modifiedEmails.length > 0) {
-                                break; // Exit the loop if emails are found
-                            }
-                        }
-    
-                        const modifiedEmails = finalizedEmails.result?.modifiedEmails || [];
-        
-                        // emails verification of emails generated from pattren 
-                        const verifiedEmailsFromPattern = await Promise.all(modifiedEmails.map(async emailObj => {
-                            const verified = await sixStepsEmailVerification(emailObj.email)
-                            if (verified.success) {
-                                return {
-                                    ...emailObj,
-                                    validationStatus: 1,
-                                    valid: true,
-                                    type: "Work"
-                                }
-                            }
-                            return undefined;
-                        }));
-                        const filteredVerifiedEmails = verifiedEmailsFromPattern.filter(emailObj => emailObj !== undefined);
-                        emails = filteredVerifiedEmails;
-                    }
-
-                    return {
-                        ...lead,
-                        links: companySocialLinks.result || [],
-                        emails: emails,
-                        phones: phoneNumbers.result || [],
-                        companyName,
-                        linkedInId
-                    }
-                }
-            }))
-            let newLeadsAdded = 0;
-
-            // this will be updated in the below logic when a lead is added
-            let creditsUsed = req.user.plan.creditsUsed;
-            // Process leads one by one to ensure proper credit updates
-
-            for (const lead of leadsData) {
-                // Skip if lead already exists
-                if (!lead._id) {
-                    // Check remaining user plan credits
-                    if (creditsUsed >= req.user.plan.credits) {
-                        await User.findByIdAndUpdate(
-                            req.user._id,
-                            { $inc: { 'plan.creditsUsed': newLeadsAdded } },  // Increment by the value of new added leads
-                            { new: true }  // Return the updated document
-                        );
-                        throw new CustomError(`only ${newLeadsAdded} Added. Remaining not added because not enough credits`, 409);
-                    }
-                    const fileName = lead.userName?.split(' ')[0] || "default_filename"; 
-                    const newLead = new Lead({
-                        owner: team,
-                        folderId: folderId,
-                        filename: fileName,
-                        firstName: lead.userName?.split(' ')[0],
-                        lastName: lead.userName?.split(' ')[1],
-                        name: lead.userName,
-                        profile: {
-                            imageUrl: lead.userImage,
-                            name: lead.userName
-                        },
-                        linkedInId: lead.linkedInId,
-                        emails: lead.emails,
-                        links: lead.links,
-                        phones: lead.phones,
-                        imageUrl: lead.userImage,
-                        company: {
-                            company: lead.companyName,
-                            position: lead.currentPosition || lead.headline
-                        },
-                        currentPositions: [{
-                            company: lead.companyName,
-                            position: lead.currentPosition || lead.headline
-                        }],
-                        location: lead.userLocation,
-                        state: lead.userLocation,
-                        country: lead.userLocation,
-                        city: lead.userLocation,
-                        about: lead.userSummary,
-                    });
-                    await newLead.save();
-                    folder.leads.push(newLead._id);
-                    newLeadsAdded++;
-                    creditsUsed++;
+            const companyUrl = companySocialLinks.result.filter(link => link.type === "official")[0]?.link;
+            if (companyUrl) {
+                const companyTLDArray = new URL(companyUrl).host.split(".");
+                const companyDomain = companyTLDArray[companyTLDArray.length - 2] + "." + companyTLDArray[companyTLDArray.length - 1];
+                // here we will generate emails from sequences and verify them
+                // get the domain from companyUrl
+                const generated = await generateEmailFromSequenceAndVerify(lead.userName, companyDomain);
+                if (generated.success) {
+                    emails.push(generated.email)
                 }
             }
 
-            await User.findByIdAndUpdate(
-                req.user._id,
-                { $inc: { 'plan.creditsUsed': newLeadsAdded } },  // Increment by the value of new added leads
-                { new: true }  // Return the updated document
-            );
+            if (emails.length === 0) {
+                let finalizedEmails = []
+                const queryAttempts = [1, 2, 3, 4]; // List of query numbers to try
+                for (const attempt of queryAttempts) {
+                    finalizedEmails = await getEmailsService(companyName.toLowerCase(), lead.userName, attempt);
+                    if (finalizedEmails.result?.modifiedEmails && finalizedEmails.result?.modifiedEmails.length > 0) {
+                        break; // Exit the loop if emails are found
+                    }
+                }
 
-            await folder.save();
+                const modifiedEmails = finalizedEmails.result?.modifiedEmails || [];
 
-            return { newLeadsAdded, creditsUsed };
+                // emails verification of emails generated from pattren 
+                const verifiedEmailsFromPattern = await Promise.all(modifiedEmails.map(async emailObj => {
+                    const verified = await sixStepsEmailVerification(emailObj.email)
+                    if (verified.success) {
+                        return {
+                            ...emailObj,
+                            validationStatus: 1,
+                            valid: true,
+                            type: "Work"
+                        }
+                    }
+                    return undefined;
+                }));
+                const filteredVerifiedEmails = verifiedEmailsFromPattern.filter(emailObj => emailObj !== undefined);
+                emails = filteredVerifiedEmails;
+            }
+
+            leadData = {
+                ...lead,
+                links: companySocialLinks.result || [],
+                emails: emails,
+                phones: phoneNumbers.result || [],
+                companyName,
+                linkedInId
+            }
         }
 
-        // Race between the main logic and the timeout
-        const result = await Promise.race([mainLogic(), timeoutPromise]);
-        //
-        unlockControllerForUser(req.user._id, "createBulkLeads")
+        // Skip if leadData already exists
+        if (!leadData._id) {
+            // Check remaining user plan credits
+            const fileName = leadData.userName?.split(' ')[0] || "default_filename";
+            const newLead = new Lead({
+                owner: team,
+                folderId: folderId,
+                filename: fileName,
+                firstName: leadData.userName?.split(' ')[0],
+                lastName: leadData.userName?.split(' ')[1],
+                name: leadData.userName,
+                profile: {
+                    imageUrl: leadData.userImage,
+                    name: leadData.userName
+                },
+                linkedInId: leadData.linkedInId,
+                emails: leadData.emails,
+                links: leadData.links,
+                phones: leadData.phones,
+                imageUrl: leadData.userImage,
+                company: {
+                    company: leadData.companyName,
+                    position: leadData.currentPosition || leadData.headline
+                },
+                currentPositions: [{
+                    company: leadData.companyName,
+                    position: leadData.currentPosition || leadData.headline
+                }],
+                location: leadData.userLocation,
+                state: leadData.userLocation,
+                country: leadData.userLocation,
+                city: leadData.userLocation,
+                about: leadData.userSummary,
+            });
+            await newLead.save();
+            leadData = newLead
+            folder.leads.push(newLead._id);
+        }
+
+
+        await User.findByIdAndUpdate(
+            req.user._id,
+            { $inc: { 'plan.creditsUsed': 1 } },  // Increment by the value of new added leads
+            { new: true }  // Return the updated document
+        );
+
+        await folder.save();
+
+
         res.status(200).json({
-            success: true, redult: result
+            success: true, result: { newLeadsAdded: 1, creditsUsed: 1, leadData  }
         })
     } catch (error) {
-        unlockControllerForUser(req.user._id, "createBulkLeads")
         next(error);
     }
 }
@@ -2455,7 +2408,7 @@ export {
     getProfileById,
     updateProfileById,
     deleteLeads,
-     getLeadsOfCustomer,
+    getLeadsOfCustomer,
     assignLeadToTeamMember,
     getLeadsOfFolder,
     addNotesAndTags,
