@@ -30,22 +30,22 @@ import "./backgroundWorkers/scheduleTasks/emailSequenceSender.js"
 import "./backgroundWorkers/scheduleTasks/usersCreditsUpdater.js"
 
 // we have to use max CPU cors for load balancing 
-// if (cluster.isPrimary) {
-//     // Get the number of CPU cores
-//     const numCPUs = os.cpus().length;
-//     console.log(`Primary ${process.pid} is running. Forking ${numCPUs} workers...`);
+if (cluster.isPrimary) {
+    // Get the number of CPU cores
+    const numCPUs = os.cpus().length;
+    console.log(`Primary ${process.pid} is running. Forking ${numCPUs} workers...`);
 
-//     // Fork workers
-//     for (let i = 0; i < numCPUs; i++) {
-//         cluster.fork();
-//     }
+    // Fork workers
+    for (let i = 0; i < numCPUs; i++) {
+        cluster.fork();
+    }
 
-//     // Restart workers if they exit
-//     cluster.on('exit', (worker, code, signal) => {
-//         console.log(`Worker ${worker.process.pid} died. Starting a new one...`);
-//         cluster.fork();
-//     });
-// } else {
+    // Restart workers if they exit
+    cluster.on('exit', (worker, code, signal) => {
+        console.log(`Worker ${worker.process.pid} died. Starting a new one...`);
+        cluster.fork();
+    });
+} else {
     const app = express();
 
     // app.use(session({
@@ -115,5 +115,5 @@ import "./backgroundWorkers/scheduleTasks/usersCreditsUpdater.js"
     });
 
     app.listen(port, () => console.log(`Jarvis app is listening on port ${port}`));
-// }
+}
 

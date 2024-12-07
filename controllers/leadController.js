@@ -2209,8 +2209,6 @@ const createBulkLeads = async (req, res, next) => {
         if (lead.headline && !lead.companyName) {
             // here we have to extract the company name from the leads headline using GPT
             const leadProcessedWithGPT = await extractCompanyName([lead]);
-            console.log("leadProcessedWithGPT", leadProcessedWithGPT)
-            ""            // now we have to replace the leads processed with GPT in out leads
             lead = leadProcessedWithGPT[0]
         }
 
@@ -2273,6 +2271,7 @@ const createBulkLeads = async (req, res, next) => {
                 const generated = await generateEmailFromSequenceAndVerify(lead.userName, companyDomain);
                 if (generated.success) {
                     emails.push(generated.email)
+                    console.log("generated.email", generated.email)
                 }
             }
 
