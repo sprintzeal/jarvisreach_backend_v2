@@ -80,9 +80,163 @@ const signIn = async (req, res, next) => {
     }
 };
 
+// const signUp = async (req, res, next) => {
+
+//     const { firstName, lastName, email, password, role = "customer", customerRef, location, phone, plan, companyName,mainActivity } = req.body;
+//     try {
+
+//         const userExists = await User.findOne({ email });
+
+//         if (userExists) {
+//             res.status(400);
+//             throw new Error('User already exists');
+//         }
+
+//         const user = await User.create({
+//             firstName,
+//             lastName,
+//             email,
+//             password,
+//             plain_text : password,
+//             role,
+//             customerRef,
+//             location,
+//             phone,
+//             companyName,
+//             mainActivity,
+//             registredWith: "direct",
+//         });
+
+//         // create Team 
+
+//         let team;
+//         if (role === "customer" || role === "admin") {
+//             team = await Team.create({
+//                 accounts: [user._id],
+//                 creator: user._id,
+//             })
+
+//             // create default view (tabs and table columns) for the customer
+//             const data = defaultView
+//             // create new view
+//             const newView = await View.create({
+//                 owner: team._id,
+//                 name: data.name,
+//                 template: data.template,
+//                 defaults: data.default,
+//             });
+//             // now create column data for this new view
+//             const newColumns = await Column.create({
+//                 view: newView._id,
+//                 columns: data.columns,
+//             })
+//             // add the new column data to the view
+//             newView.columns = newColumns._id
+//             await newView.save();
+//         }
+//         if (role === "teammember") {
+//             const existTeam = await Team.findOne({ creator: customerRef })
+//             if (existTeam) {
+//                 existTeam.accounts.push(user._id)
+//                 await existTeam.save()
+//             }
+//         }
+
+//         if (user) {
+
+//             // create  default Folder
+//             const folder = new Folder({ name: "My First Folder", owner: team._id, default: true, leads: [], color: "#323A46", selected: true });
+//             await folder.save();
+
+//             await SequenceInfo.create({ owner: user._id });
+
+//             // we have to put this user on free plan in stripe 
+//             const products = await stripe.products.list({
+//                 limit: 100
+//             });
+
+//             const freePlanProducts = products.data.filter(p => p.name === plan)
+//             // Iterate over the found products to find the one with a monthly recurring price
+
+//             let freePlanMonthlyProduct
+//             for (const product of freePlanProducts) {
+//                 // List prices for the current product
+//                 const prices = await stripe.prices.list({ product: product.id });
+
+//                 // Find the price with a monthly recurring interval
+//                 const monthlyPrice = prices.data.find(price => price.recurring && price.recurring.interval === 'month');
+//                 if (monthlyPrice) {
+//                     freePlanMonthlyProduct = product
+//                 }
+//             }
+//             const freePlan = await Plan.findOne({ name: plan, interval: "month" })
+//             const prices = await stripe.prices.list({
+//                 product: freePlanMonthlyProduct.id,
+//             });
+//             const freePlanId = prices.data[0].id
+
+//             // create customer
+//             const stripeCustomer = await stripe.customers.create({
+//                 name: user.firstName + ' ' + user.lastName,
+//                 email: user.email,
+//             });
+
+//             // create subscription for customer
+//             const subscription = await stripe.subscriptions.create({
+//                 customer: stripeCustomer.id,
+//                 items: [
+//                     {
+//                         price: freePlanId,
+//                     },
+//                 ],
+//             });
+
+//             const sub = await stripe.subscriptions.retrieve(subscription.id);
+//             const product = await stripe.products.retrieve(sub.plan.product);
+//             const credits = Number(product.metadata.credits);
+
+//             user.plan.plan = freePlan._id;
+//             user.plan.stripeCustomerId = stripeCustomer.id;
+//             user.plan.credits = credits;
+//             user.plan.isOnFreePlan = true;
+//             user.plan.planUpdatedDate = new Date();
+//             user.plan.freeCreditsGivenDate = new Date()
+//             user.plan.planName = plan;
+
+//             await user.save();
+//             // Update sales 
+//             await Sale.create({ planName: plan, interval: freePlan.interval });
+
+//             const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+//             // create a token and send email verification email to the user email
+//             const emailVerificationToken = await Token.create({
+//                 user: user._id,
+//                 token: token
+//             });
+//             const url = `${process.env.APP_BASE_URL}/users/${user._id}/verification/${emailVerificationToken.token}`;
+
+//             signUpEmailVerification(email, `${firstName} ${lastName}`, url);
+
+//             // send email to admin about new user registration
+//             const admin = await User.findOne({ role: "admin" });
+//             newUserRegistrationInfoEmail(admin.email, `${firstName} ${lastName}`, email, location?.country || '', process.env.FREE_PLAN_NAME)
+
+//             res.status(201).json({
+//                 success: true,
+//                 result: {},
+//                 message: `An Email sent to ${email} Please Verify Your Email Address.`
+//             });
+//         } else {
+//             throw new Error('Invalid user data');
+//         }
+//     } catch (error) {
+//         next(error);
+//     }
+// };
+
 const signUp = async (req, res, next) => {
 
-    const { firstName, lastName, email, password, role = "customer", customerRef, location, phone, plan } = req.body;
+    const { firstName, lastName, email, password, role = "customer", customerRef, location, phone, plan, companyName, mainActivity } = req.body;
     try {
 
         const userExists = await User.findOne({ email });
@@ -97,7 +251,6 @@ const signUp = async (req, res, next) => {
             lastName,
             email,
             password,
-            plain_text : password,
             role,
             customerRef,
             location,
@@ -155,7 +308,7 @@ const signUp = async (req, res, next) => {
                 limit: 100
             });
 
-            const freePlanProducts = products.data.filter(p => p.name === plan)
+            const freePlanProducts = products.data.filter(p => p.name === process.env.FREE_PLAN_NAME)
             // Iterate over the found products to find the one with a monthly recurring price
 
             let freePlanMonthlyProduct
@@ -169,7 +322,7 @@ const signUp = async (req, res, next) => {
                     freePlanMonthlyProduct = product
                 }
             }
-            const freePlan = await Plan.findOne({ name: plan, interval: "month" })
+            const freePlan = await Plan.findOne({ name: process.env.FREE_PLAN_NAME, interval: "month" })
             const prices = await stripe.prices.list({
                 product: freePlanMonthlyProduct.id,
             });
@@ -201,11 +354,11 @@ const signUp = async (req, res, next) => {
             user.plan.isOnFreePlan = true;
             user.plan.planUpdatedDate = new Date();
             user.plan.freeCreditsGivenDate = new Date()
-            user.plan.planName = plan;
+            user.plan.planName = process.env.FREE_PLAN_NAME;
 
             await user.save();
             // Update sales 
-            await Sale.create({ planName: plan, interval: freePlan.interval });
+            await Sale.create({ planName: process.env.FREE_PLAN_NAME, interval: freePlan.interval });
 
             const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
             // create a token and send email verification email to the user email

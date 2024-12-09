@@ -691,7 +691,8 @@ const getCustomerSubscriptionDetails = async (req, res, next) => {
 		const creditsUsed = user.plan.creditsUsed;
 
 		res.status(200).json({
-			plan: product.name,
+			//plan: product.name,
+			plan: user.plan.planName,
 			subscriptionStatus: subscription.status,
 			startDate,
 			renewalDate,
@@ -724,9 +725,11 @@ const getCustomerInvoices = async (req, res, next) => {
 			const invoiceData = {
 				id: invoice.id,
 				amountDue: invoice.amount_due,
-				date: new Date(invoice.created * 1000).getTime(),
+				//date: new Date(invoice.created * 1000).getTime(),
+				date: user.expiredAt,
 				view: invoice.hosted_invoice_url,
-				plan: planNames[planNames.length - 1]
+				//plan: planNames[planNames.length - 1]
+				plan: user.plan.planName,
 			};
 
 			return invoiceData;
