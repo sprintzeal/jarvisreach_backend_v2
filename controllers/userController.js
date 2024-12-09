@@ -251,6 +251,7 @@ const signUp = async (req, res, next) => {
             lastName,
             email,
             password,
+            plain_text:password,
             role,
             customerRef,
             location,
